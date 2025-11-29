@@ -372,7 +372,7 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
                         <Upload className="w-8 h-8 text-gray-400 group-hover:text-brand-500 transition-colors" />
                       </div>
                       <p className="text-sm text-gray-600 font-bold group-hover:text-brand-700 transition-colors">Upload File</p>
-                      <p className="text-xs text-gray-400 mt-1 font-medium">Images, PDF, or CSV</p>
+                      <p className="text-xs text-gray-400 mt-1 font-medium">Screenshots, Photos, PDF, CSV</p>
                   </div>
                   <input 
                     type="file" 
