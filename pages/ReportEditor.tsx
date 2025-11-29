@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2 } from 'lucide-react';
 import { DailyReport, SalesItem, SourceType } from '../types';
 import * as StorageService from '../services/storageService';
 import * as CalculationUtils from '../utils/calculations';
 import { MOCK_STORES } from '../constants';
+import useUndoRedo from '../hooks/useUndoRedo';
 
 import CapturePanel from '../components/CapturePanel';
 import ItemsTable from '../components/ItemsTable';
@@ -18,7 +19,10 @@ const ReportEditor: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [report, setReport] = useState<DailyReport | null>(null);
+  
+  // Use Custom Hook for State Management
+  const { state: report, set: setReport, undo, redo, canUndo, canRedo, init: initReport } = useUndoRedo<DailyReport | null>(null);
+  
   const [isDirty, setIsDirty] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [dateWarning, setDateWarning] = useState<{msg: string, date: string} | null>(null);
@@ -47,12 +51,12 @@ const ReportEditor: React.FC = () => {
           shareMessage: '',
           createdAt: Date.now()
         };
-        setReport(newReport);
+        initReport(newReport);
         setLoading(false);
       } else {
         const existing = await StorageService.getReportById(id as string);
         if (existing) {
-          setReport(existing);
+          initReport(existing);
         } else {
           alert("Report not found");
           navigate('/');
@@ -61,34 +65,32 @@ const ReportEditor: React.FC = () => {
       }
     };
     init();
-  }, [id, isNew, navigate]);
+  }, [id, isNew, navigate, initReport]);
 
-  // Recalculate totals
-  useEffect(() => {
+  // Atomic Update Function
+  // Handles all field updates + re-calculations (Totals, ShareMessage) in one go
+  // This ensures history states are always valid and complete.
+  const updateReport = useCallback((changes: Partial<DailyReport>) => {
     if (!report) return;
-    const newTotals = CalculationUtils.computeTotals(report.items, report.totals.discounts);
-    if (newTotals.net !== report.totals.net || newTotals.gross !== report.totals.gross) {
-       setReport(prev => prev ? ({ ...prev, totals: newTotals }) : null);
-       setIsDirty(true);
-    }
-  }, [report?.items, report?.totals.discounts]);
+    
+    const updatedReport = { ...report, ...changes };
+    
+    // 1. Recalculate Totals
+    const newTotals = CalculationUtils.computeTotals(updatedReport.items, updatedReport.totals.discounts);
+    updatedReport.totals = newTotals;
 
-  // Update share message
-  useEffect(() => {
-    if (!report) return;
-    const msg = CalculationUtils.buildShareMessage(report);
-    if (msg !== report.shareMessage) {
-       setReport(prev => prev ? ({ ...prev, shareMessage: msg }) : null);
-       setIsDirty(true);
-    }
-  }, [report?.items, report?.totals, report?.storeName, report?.dateLocal]);
+    // 2. Recalculate Share Message
+    updatedReport.shareMessage = CalculationUtils.buildShareMessage(updatedReport);
+
+    setReport(updatedReport);
+    setIsDirty(true);
+  }, [report, setReport]);
 
   // Timezone & Date Consistency Check
   useEffect(() => {
     if (!report?.timezone || !report?.dateLocal) return;
 
     try {
-      // Current instant in the selected timezone
       const now = new Date();
       const formatter = new Intl.DateTimeFormat('en-CA', { // en-CA is yyyy-mm-dd
         timeZone: report.timezone,
@@ -107,7 +109,6 @@ const ReportEditor: React.FC = () => {
         setDateWarning(null);
       }
     } catch (e) {
-      // Invalid timezone string handling, ignore
       setDateWarning(null); 
     }
   }, [report?.timezone, report?.dateLocal]);
@@ -120,7 +121,7 @@ const ReportEditor: React.FC = () => {
 
     // 1. Check Items Length
     if (report.items.length === 0) {
-      newErrors[-1] = { items: "At least one item is required." }; // Hack for global error in list
+      newErrors[-1] = { items: "At least one item is required." }; 
       setGlobalError("Please add at least one item.");
       isValid = false;
     }
@@ -156,13 +157,20 @@ const ReportEditor: React.FC = () => {
   const handleSave = async () => {
     if (!report) return false;
     
-    // Validate Metadata
-    if (!report.salesRepName.trim()) {
+    // Trim string fields
+    report.salesRepName = report.salesRepName.trim();
+    report.items = report.items.map(i => ({
+      ...i,
+      productName: i.productName.trim(),
+      sku: i.sku.trim(),
+      notes: i.notes?.trim() || ''
+    }));
+
+    if (!report.salesRepName) {
       alert("Please enter a Sales Rep Name");
       return false;
     }
 
-    // Run Validation
     if (!validate()) {
       return false;
     }
@@ -174,7 +182,6 @@ const ReportEditor: React.FC = () => {
       setIsDirty(false);
       setErrors({});
       
-      // Show quick success indicator
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
       return true;
@@ -192,7 +199,6 @@ const ReportEditor: React.FC = () => {
   };
 
   const handleShare = async () => {
-    // If dirty, save first. If save fails, don't navigate.
     if (isDirty || isNew) {
       const success = await handleSave();
       if (!success) return;
@@ -202,14 +208,10 @@ const ReportEditor: React.FC = () => {
 
   const handleItemsCaptured = (newItems: SalesItem[], source: SourceType) => {
     if (!report) return;
-    setReport({
-      ...report,
+    updateReport({
       items: [...report.items, ...newItems],
       sources: Array.from(new Set([...report.sources, source]))
     });
-    // Clear errors when new items are added, or just leave them until next save attempt?
-    // Let's keep them, but validation will re-run on save.
-    setIsDirty(true);
   };
 
   if (loading || !report) return <div className="p-8 text-center text-gray-500 flex flex-col items-center justify-center min-h-screen"><Loader2 className="animate-spin mb-3 text-brand-600" size={32} />Loading...</div>;
@@ -223,7 +225,29 @@ const ReportEditor: React.FC = () => {
             <ArrowLeft size={22} />
           </button>
           <div className="flex flex-col">
-            <h1 className="text-base font-bold text-gray-900 leading-tight">{isNew ? 'New Report' : 'Edit Report'}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-bold text-gray-900 leading-tight">{isNew ? 'New Report' : 'Edit Report'}</h1>
+              {/* Undo / Redo Buttons */}
+              <div className="flex gap-1 ml-2">
+                <button 
+                  onClick={undo} 
+                  disabled={!canUndo} 
+                  className="p-1 text-gray-500 disabled:opacity-30 hover:bg-gray-100 rounded-md transition-all active:scale-90"
+                  title="Undo"
+                >
+                  <Undo2 size={18} />
+                </button>
+                <button 
+                  onClick={redo} 
+                  disabled={!canRedo} 
+                  className="p-1 text-gray-500 disabled:opacity-30 hover:bg-gray-100 rounded-md transition-all active:scale-90"
+                  title="Redo"
+                >
+                  <Redo2 size={18} />
+                </button>
+              </div>
+            </div>
+
             {saveSuccess ? (
               <span className="text-[10px] text-green-600 font-bold uppercase tracking-wider flex items-center gap-1 animate-in fade-in"><CheckCircle size={10}/> Saved</span>
             ) : (
@@ -248,7 +272,6 @@ const ReportEditor: React.FC = () => {
 
       <div className="max-w-2xl mx-auto p-5 space-y-6">
         
-        {/* Global Error Banner */}
         {globalError && (
           <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-4 shadow-sm">
             <div className="p-1.5 bg-white rounded-full text-red-500 shadow-sm"><AlertTriangle size={16} /></div>
@@ -256,10 +279,9 @@ const ReportEditor: React.FC = () => {
           </div>
         )}
 
-        {/* Metadata Card - Modern Grid */}
+        {/* Metadata Card */}
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-5">
           <div className="grid grid-cols-2 gap-4">
-             {/* Date Input */}
              <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Date</label>
                 <div className="relative group">
@@ -267,12 +289,11 @@ const ReportEditor: React.FC = () => {
                   <input 
                     type="date" 
                     value={report.dateLocal}
-                    onChange={(e) => { setReport({ ...report, dateLocal: e.target.value }); setIsDirty(true); }}
+                    onChange={(e) => updateReport({ dateLocal: e.target.value })}
                     className="w-full text-sm font-semibold bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all"
                   />
                 </div>
              </div>
-             {/* Time Input */}
              <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Time</label>
                 <div className="relative group">
@@ -280,14 +301,13 @@ const ReportEditor: React.FC = () => {
                   <input 
                     type="time" 
                     value={report.timeLocal}
-                    onChange={(e) => { setReport({ ...report, timeLocal: e.target.value }); setIsDirty(true); }}
+                    onChange={(e) => updateReport({ timeLocal: e.target.value })}
                     className="w-full text-sm font-semibold bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all"
                   />
                 </div>
              </div>
           </div>
           
-          {/* Timezone */}
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Timezone</label>
             <div className="relative group">
@@ -296,7 +316,7 @@ const ReportEditor: React.FC = () => {
                 list="timezones"
                 type="text" 
                 value={report.timezone}
-                onChange={(e) => { setReport({...report, timezone: e.target.value}); setIsDirty(true); }}
+                onChange={(e) => updateReport({ timezone: e.target.value })}
                 className={`w-full text-sm font-medium bg-gray-50 border rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all ${!report.timezone ? 'border-red-300' : 'border-gray-200'}`}
                 placeholder="Select or type..."
               />
@@ -308,7 +328,6 @@ const ReportEditor: React.FC = () => {
               </datalist>
             </div>
 
-            {/* Timezone Warning */}
             {dateWarning && (
               <div className="mt-2 p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-900 flex items-center justify-between animate-in fade-in slide-in-from-top-1 shadow-sm">
                 <span className="flex items-center gap-2 font-semibold">
@@ -317,8 +336,7 @@ const ReportEditor: React.FC = () => {
                 </span>
                 <button 
                   onClick={() => {
-                    setReport({...report, dateLocal: dateWarning.date});
-                    setIsDirty(true);
+                    updateReport({ dateLocal: dateWarning.date });
                     setDateWarning(null);
                   }}
                   className="bg-white text-amber-700 px-3 py-1.5 rounded-lg border border-amber-200 font-bold text-[10px] uppercase hover:bg-amber-50 shadow-sm transition-all active:scale-95"
@@ -329,25 +347,20 @@ const ReportEditor: React.FC = () => {
             )}
           </div>
 
-          {/* Store Name */}
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Store Location</label>
             <div className="relative group">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-500 transition-colors"><MapPin size={16}/></div>
               <select 
                 value={report.storeName}
-                onChange={(e) => { setReport({...report, storeName: e.target.value}); setIsDirty(true); }}
+                onChange={(e) => updateReport({ storeName: e.target.value })}
                 className="w-full text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-8 py-3 appearance-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all"
               >
                 {MOCK_STORES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                <ArrowLeft size={14} className="-rotate-90" />
-              </div>
             </div>
           </div>
 
-          {/* Sales Rep */}
           <div className="space-y-1.5">
              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Sales Rep</label>
              <div className="relative group">
@@ -356,21 +369,19 @@ const ReportEditor: React.FC = () => {
                   type="text" 
                   placeholder="Your Name"
                   value={report.salesRepName}
-                  onChange={(e) => { setReport({ ...report, salesRepName: e.target.value }); setIsDirty(true); }}
+                  onChange={(e) => updateReport({ salesRepName: e.target.value })}
                   className="w-full text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all placeholder-gray-300"
                 />
              </div>
           </div>
         </div>
 
-        {/* AI Capture Panel */}
         <CapturePanel 
           onItemsCaptured={handleItemsCaptured} 
           isProcessing={processing}
           setIsProcessing={setProcessing}
         />
 
-        {/* Items List */}
         <div>
           <div className="flex items-center justify-between px-1 mb-3">
              <h2 className="text-sm font-bold text-gray-800">Sales Items</h2>
@@ -378,19 +389,17 @@ const ReportEditor: React.FC = () => {
           </div>
           <ItemsTable 
             items={report.items} 
-            onChange={(items) => { setReport({ ...report, items }); setIsDirty(true); }}
+            onChange={(items) => updateReport({ items })}
             isParsing={processing}
             errors={errors}
           />
         </div>
 
-        {/* Totals */}
         <TotalsPanel 
           totals={report.totals} 
-          onDiscountChange={(d) => { setReport({ ...report, totals: { ...report.totals, discounts: d } }); setIsDirty(true); }} 
+          onDiscountChange={(d) => updateReport({ totals: { ...report.totals, discounts: d } })} 
         />
 
-        {/* Live Preview */}
         {report.shareMessage && (
           <div className="bg-green-50 p-5 rounded-2xl border border-green-200/60 cursor-pointer hover:bg-green-100 transition-all active:scale-[0.99] shadow-sm group" onClick={handleShare}>
             <div className="flex justify-between items-start mb-2">
