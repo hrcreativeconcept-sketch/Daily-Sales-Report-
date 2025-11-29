@@ -23,6 +23,43 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
   const [pendingItems, setPendingItems] = useState<SalesItem[] | null>(null);
   const [pendingSource, setPendingSource] = useState<'ocr' | 'speech' | 'manual' | 'upload'>('manual');
 
+  // Helper: Client-side image compression
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        img.src = e.target?.result as string;
+      };
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        // Increased resolution to 2048 to preserve text details on screenshots
+        const maxWidth = 2048; 
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        // JPEG quality 0.85 for better text clarity
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85); 
+        resolve(dataUrl.split(',')[1]); // Return base64 only
+      };
+
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Debounce timer for auto-parsing text
   useEffect(() => {
     if (activeTab !== 'copy' || !inputText.trim() || isProcessing || pendingItems) return;
@@ -135,16 +172,29 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
           }
         };
         reader.readAsText(file);
+      } else if (file.type.startsWith('image/')) {
+        // Compress/Resize image on client before sending
+        try {
+          const base64 = await compressImage(file);
+          const items = await GeminiService.parseFromFile(base64, 'image/jpeg');
+          handleCapturedResults(items, type);
+        } catch (err: any) {
+          console.error(err);
+          alert(`Image processing failed: ${err.message || 'Unknown error'}`);
+        } finally {
+          setIsProcessing(false);
+        }
       } else {
+        // PDF or other formats - send as is (converted to base64)
         const reader = new FileReader();
         reader.onloadend = async () => {
           try {
             const base64 = (reader.result as string).split(',')[1];
             const items = await GeminiService.parseFromFile(base64, file.type);
             handleCapturedResults(items, type);
-          } catch (err) {
+          } catch (err: any) {
             console.error(err);
-            alert("Failed to process file. Ensure it's a clear image or PDF.");
+            alert(`File processing failed: ${err.message || 'Ensure it is a valid file'}`);
           } finally {
             setIsProcessing(false);
           }
