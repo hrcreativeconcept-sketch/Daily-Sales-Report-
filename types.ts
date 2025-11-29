@@ -5,6 +5,7 @@ export interface SalesItem {
   unitPrice: number;
   currency: string;
   notes?: string;
+  lowConfidence?: boolean;
 }
 
 export interface Totals {

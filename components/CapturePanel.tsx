@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Mic, Upload, Loader2, Clipboard, StopCircle, ArrowRight, Check, X, Volume2 } from 'lucide-react';
+import { Camera, Mic, Upload, Loader2, Clipboard, StopCircle, ArrowRight, Check, X, Volume2, AlertTriangle } from 'lucide-react';
 import { SalesItem } from '../types';
 import * as GeminiService from '../services/geminiService';
 import { formatCurrency } from '../utils/calculations';
@@ -111,15 +111,6 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
 
   const confirmPendingItems = () => {
     if (pendingItems) {
-      // Pass both items AND any attachments created during the process
-      // (Currently attachments logic is inside handleFile, we need to bubble it up or intercept it better if we want to attach files to report)
-      // For now, we assume parent handles items. Attachments handling is separate in this component but not fully wired to "confirm".
-      // We will fix this by passing attachments state to parent.
-      
-      // Note: The parent component expects items. We need to pass attachments too if we want them saved.
-      // But the interface provided is `onItemsCaptured: (items, method)`. 
-      // We'll stick to items for now as per interface, but ideally we should update the interface.
-      
       onItemsCaptured(pendingItems, pendingSource);
       setPendingItems(null);
       setInputText('');
@@ -166,13 +157,6 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
     const uploadPromise = StorageService.uploadFile(file)
       .then(url => {
         if (url) {
-          // Notify parent about attachment immediately or store in state? 
-          // The current flow separates parsing from attachment.
-          // We'll rely on the parent updating via a prop or separate callback if needed, 
-          // but for now let's just log or alert. 
-          // Ideally, we'd pass this URL with the items.
-          // Since we can't change the prop signature easily without refactoring parent, 
-          // we'll assume the parsing is the primary goal here.
           return url;
         }
         return null;
@@ -205,9 +189,6 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
         try {
           const base64 = await compressImage(file);
           const items = await GeminiService.parseFromFile(base64, 'image/jpeg');
-          
-          // Wait for upload to finish to attach? 
-          // For UX speed, we show items immediately. 
           handleCapturedResults(items, type);
         } catch (err: any) {
           console.error(err);
@@ -322,9 +303,17 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {pendingItems.map((item, i) => (
-              <div key={i} className="flex justify-between items-center text-sm p-3 bg-gray-50 rounded-xl border border-gray-100">
+              <div key={i} className={`flex justify-between items-center text-sm p-3 rounded-xl border ${item.lowConfidence ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'}`}>
                 <div>
-                   <span className="font-bold text-gray-900">{item.quantity}x</span> {item.productName}
+                   <div className="flex items-center gap-2">
+                     <span className="font-bold text-gray-900">{item.quantity}x</span> 
+                     <span className={item.lowConfidence ? 'text-amber-900' : ''}>{item.productName}</span>
+                     {item.lowConfidence && (
+                       <span title="Low Confidence">
+                         <AlertTriangle size={14} className="text-amber-500" />
+                       </span>
+                     )}
+                   </div>
                    <div className="text-xs text-gray-400">{item.notes}</div>
                 </div>
                 <span className="font-bold text-brand-600">{formatCurrency(item.unitPrice, item.currency)}</span>

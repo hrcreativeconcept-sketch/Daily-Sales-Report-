@@ -1,6 +1,6 @@
 import React from 'react';
 import { SalesItem } from '../types';
-import { Trash2, Plus, AlertCircle, X } from 'lucide-react';
+import { Trash2, Plus, AlertCircle, X, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '../utils/calculations';
 
 interface ItemsTableProps {
@@ -26,7 +26,12 @@ const SkeletonItem = () => (
 const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = false, errors = {} }) => {
   const handleItemChange = (index: number, field: keyof SalesItem, value: string | number) => {
     const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
+    // If user edits the item, remove the lowConfidence flag
+    newItems[index] = { 
+      ...newItems[index], 
+      [field]: value,
+      lowConfidence: false 
+    };
     onChange(newItems);
   };
 
@@ -49,9 +54,14 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
       {items.map((item, index) => {
         const itemErrors = errors[index] || {};
         const hasError = Object.keys(itemErrors).length > 0;
+        const isLowConfidence = item.lowConfidence;
         
         return (
-          <div key={`${index}-${item.productName}`} className={`bg-white p-4 rounded-2xl border transition-all shadow-sm group relative ${hasError ? 'border-red-300 ring-2 ring-red-50' : 'border-gray-100 hover:border-gray-300 hover:shadow-md'}`}>
+          <div key={`${index}-${item.productName}`} className={`bg-white p-4 rounded-2xl border transition-all shadow-sm group relative ${
+            hasError ? 'border-red-300 ring-2 ring-red-50' : 
+            isLowConfidence ? 'border-amber-300 ring-2 ring-amber-50' :
+            'border-gray-100 hover:border-gray-300 hover:shadow-md'
+          }`}>
             
             {/* Elegant Delete Button */}
             <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -64,6 +74,13 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
                 <X size={18} />
               </button>
             </div>
+
+            {/* Warning Badge for Low Confidence */}
+            {isLowConfidence && (
+              <div className="absolute -top-2 left-4 bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200">
+                <AlertTriangle size={10} /> Check details
+              </div>
+            )}
             
             <div className="grid grid-cols-12 gap-x-3 gap-y-3">
               {/* Row 1: Product & SKU */}
