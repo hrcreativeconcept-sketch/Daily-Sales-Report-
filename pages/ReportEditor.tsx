@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2 } from 'lucide-react';
+import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2, Save } from 'lucide-react';
 import { DailyReport, SalesItem, SourceType } from '../types';
 import * as StorageService from '../services/storageService';
 import * as CalculationUtils from '../utils/calculations';
@@ -214,6 +214,19 @@ const ReportEditor: React.FC = () => {
     });
   };
 
+  const handleRemoveAttachment = (index: number) => {
+    if (!report) return;
+    const newAttachments = [...report.attachments];
+    newAttachments.splice(index, 1);
+    updateReport({ attachments: newAttachments });
+  };
+
+  const handleAddAttachments = (urls: string[]) => {
+    if (!report) return;
+    const newAttachments = urls.map(url => ({ type: 'image' as const, url }));
+    updateReport({ attachments: [...report.attachments, ...newAttachments] });
+  };
+
   if (loading || !report) return <div className="p-8 text-center text-gray-500 flex flex-col items-center justify-center min-h-screen"><Loader2 className="animate-spin mb-3 text-brand-600" size={32} />Loading...</div>;
 
   return (
@@ -255,17 +268,23 @@ const ReportEditor: React.FC = () => {
             )}
           </div>
         </div>
+        
+        {/* Updated Actions: Clear Labeled Buttons */}
         <div className="flex items-center gap-2">
-          <button onClick={handleShare} className="text-brand-600 p-2.5 hover:bg-brand-50 rounded-full transition-colors active:scale-95" title="Share">
-            <Share2 size={22} />
+          <button 
+            onClick={handleShare} 
+            className="bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 px-4 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm hover:shadow-md" 
+            title="Save & Share"
+          >
+            <Share2 size={16} /> Share
           </button>
           <button 
             onClick={handleSaveAndExit} 
             disabled={saving}
-            className="text-white font-bold text-xs bg-gray-900 px-4 py-2.5 rounded-xl shadow-lg shadow-gray-900/10 hover:bg-black active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="bg-gray-900 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-gray-900/20 hover:bg-black active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 text-xs font-bold"
           >
-            {saving && <Loader2 size={12} className="animate-spin"/>}
-            SAVE
+            {saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={16} />}
+            Save
           </button>
         </div>
       </div>
@@ -380,7 +399,30 @@ const ReportEditor: React.FC = () => {
           onItemsCaptured={handleItemsCaptured} 
           isProcessing={processing}
           setIsProcessing={setProcessing}
+          // Pass callback for attachment handling
+          onAttachmentsAdded={handleAddAttachments}
         />
+
+        {/* Attachments List */}
+        {report.attachments.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Attachments ({report.attachments.length})</h2>
+            <div className="grid grid-cols-3 gap-3">
+              {report.attachments.map((att, idx) => (
+                <div key={idx} className="relative group aspect-square bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                  <img src={att.url} alt="Attachment" className="w-full h-full object-cover" />
+                  <button 
+                    onClick={() => handleRemoveAttachment(idx)}
+                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <ArrowLeft size={12} className="rotate-45" /> {/* Simulating X icon with rotate */}
+                  </button>
+                  <a href={att.url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-0"></a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <div className="flex items-center justify-between px-1 mb-3">

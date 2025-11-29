@@ -10,11 +10,12 @@ interface CapturePanelProps {
   onItemsCaptured: (items: SalesItem[], method: 'ocr' | 'speech' | 'manual' | 'upload') => void;
   isProcessing: boolean;
   setIsProcessing: (val: boolean) => void;
+  onAttachmentsAdded?: (urls: string[]) => void;
 }
 
 type TabType = 'snap' | 'copy' | 'speech' | 'upload';
 
-const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessing, setIsProcessing }) => {
+const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessing, setIsProcessing, onAttachmentsAdded }) => {
   const [activeTab, setActiveTab] = useState<TabType>('snap');
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -195,6 +196,10 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
           if (publicUrl) {
             // Log the OCR attempt to the new 'reports' table
             await StorageService.saveOcrLog(publicUrl, items);
+            // Notify parent
+            if (onAttachmentsAdded) {
+               onAttachmentsAdded([publicUrl]);
+            }
           }
 
           handleCapturedResults(items, type);
@@ -211,10 +216,19 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
           try {
             const base64 = (reader.result as string).split(',')[1];
             items = await GeminiService.parseFromFile(base64, file.type);
+            
+            // Wait for upload to complete
+            const publicUrl = await uploadPromise;
+            if (publicUrl && onAttachmentsAdded) {
+               onAttachmentsAdded([publicUrl]);
+            }
+
             handleCapturedResults(items, type);
           } catch (err: any) {
             console.error(err);
             alert(`File processing failed: ${err.message}. Please check your API Key configuration.`);
+          } finally {
+            setIsProcessing(false);
           }
         };
         reader.readAsDataURL(file);

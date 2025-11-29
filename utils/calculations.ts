@@ -1,3 +1,4 @@
+
 import { DailyReport, SalesItem, Totals } from "../types";
 
 export const getLocalDateTimeAndTimezone = () => {
@@ -41,69 +42,53 @@ export const formatCurrency = (amount: number, currency = 'AED') => {
 };
 
 export const buildShareMessage = (report: DailyReport): string => {
-  // 1. Format Financials
-  const netFormatted = formatCurrency(report.totals.net);
+  // 1. Format Date: 30-Nov-2025
+  // Parse string manually to avoid timezone shifts (e.g. T00:00 -> previous day)
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let dateFormatted = report.dateLocal;
   
-  // 2. Format Date
-  const dateObj = new Date(`${report.dateLocal}T${report.timeLocal}:00`);
-  const datePretty = isNaN(dateObj.getTime()) 
-    ? report.dateLocal 
-    : dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-
-  // 3. Construct fixed parts
-  const header = `Daily Sales – ${datePretty}, ${report.storeName}`;
-  const footer = `(${netFormatted} net).`;
-  
-  // Format: "{header}: {itemSummary} {footer}"
-  // Separator overhead: ": " (2) + " " (1) = 3 chars
-  const overhead = 3;
-  const MAX_CHARS = 500;
-  const availableSpace = MAX_CHARS - header.length - footer.length - overhead;
-
-  let itemSummary = "No items";
-
-  if (report.items.length > 0) {
-    // Sort by Total Value (Qty * Price) desc to show most significant items
-    const sortedItems = [...report.items].sort((a, b) => (b.quantity * b.unitPrice) - (a.quantity * a.unitPrice));
-    
-    // Attempt to fit top 3
-    const topItems = sortedItems.slice(0, 3);
-    const itemStrings: string[] = [];
-    let currentLength = 0;
-    let itemsIncluded = 0;
-
-    for (let i = 0; i < topItems.length; i++) {
-      const item = topItems[i];
-      // Truncate product name if excessively long
-      const pName = item.productName.length > 30 ? item.productName.substring(0, 29) + '…' : item.productName;
-      const str = `${item.quantity}× ${pName}`;
+  try {
+    const parts = report.dateLocal.split('-'); // yyyy-mm-dd
+    if (parts.length === 3) {
+      const year = parts[0];
+      const monthIdx = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
       
-      // Calculate length contribution
-      // First item has no comma prefix. Subsequent ones have ", " (2 chars)
-      const separatorLen = i === 0 ? 0 : 2;
-      
-      // Reserve space for " (+XX more)" suffix if we can't fit everything
-      // Max suffix length approx 15 chars e.g. " (+100 more)"
-      const suffixReservation = 15;
-
-      if (currentLength + separatorLen + str.length + suffixReservation <= availableSpace) {
-        itemStrings.push(str);
-        currentLength += separatorLen + str.length;
-        itemsIncluded++;
-      } else {
-        break;
+      if (months[monthIdx]) {
+        dateFormatted = `${day}-${months[monthIdx]}-${year}`;
       }
     }
+  } catch (e) {}
 
-    itemSummary = itemStrings.join(', ');
+  // 2. Build Header
+  // Dubai Hill Mall
+  // 30-Nov-2025 
+  // Sale Report
+  let message = `${report.storeName}\n${dateFormatted} \n\nSale Report\n`;
+
+  // 3. Build Item List
+  // 1. 1 Iphone Screen Protector 80 AED
+  report.items.forEach((item, index) => {
+    const lineTotal = item.quantity * item.unitPrice;
     
-    const remaining = report.items.length - itemsIncluded;
-    if (remaining > 0) {
-      itemSummary += ` (+${remaining} more)`;
-    }
-  }
+    // Format number: remove decimals if whole number (80), keep if necessary (80.50)
+    const priceStr = lineTotal % 1 === 0 
+      ? lineTotal.toString() 
+      : lineTotal.toFixed(2);
 
-  return `${header}: ${itemSummary} ${footer}`;
+    // Format: 1. Qty Name Price Currency
+    message += `\n${index + 1}. ${item.quantity} ${item.productName} ${priceStr} ${item.currency}`;
+  });
+
+  // 4. Build Footer
+  // Total: 300 AED
+  const netTotal = report.totals.net % 1 === 0 
+    ? report.totals.net.toString() 
+    : report.totals.net.toFixed(2);
+
+  message += `\n\nTotal: ${netTotal} AED`;
+
+  return message;
 };
 
 export const generateId = () => {
