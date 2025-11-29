@@ -1,0 +1,9 @@
+{
+  "name": "Daily Sales Report",
+  "description": "Mobile-first daily sales tracking with AI-powered data capture and WhatsApp reporting.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

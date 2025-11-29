@@ -1,0 +1,395 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check } from 'lucide-react';
+import { DailyReport } from '../types';
+import * as StorageService from '../services/storageService';
+import { formatCurrency } from '../utils/calculations';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+type ViewMode = 'home' | 'history';
+
+const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const [reports, setReports] = useState<DailyReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('home');
+  
+  // Selection Mode State
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const fetchReports = async () => {
+    setLoading(true);
+    const data = await StorageService.loadReports();
+    setReports(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  // Selection Logic
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    setSelectedIds(new Set()); // Clear selection on toggle
+  };
+
+  const toggleReportSelection = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const deleteSelectedReports = async () => {
+    if (selectedIds.size === 0) return;
+
+    if (window.confirm(`Delete ${selectedIds.size} selected reports?`)) {
+      setLoading(true);
+      try {
+        await StorageService.deleteReports(Array.from(selectedIds));
+        await fetchReports(); // Reload from DB
+        setIsSelectionMode(false);
+        setSelectedIds(new Set());
+      } catch (e) {
+        alert("Failed to delete selected reports.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const filteredReports = reports.filter(r => {
+    const matchesSearch = !searchTerm || r.storeName.toLowerCase().includes(searchTerm.toLowerCase());
+    const reportDate = r.dateLocal;
+    const matchesStart = !startDate || reportDate >= startDate;
+    const matchesEnd = !endDate || reportDate <= endDate;
+    return matchesSearch && matchesStart && matchesEnd;
+  }).sort((a, b) => b.dateLocal.localeCompare(a.dateLocal) || b.createdAt - a.createdAt);
+
+  const mostRecentReport = [...reports].sort((a, b) => b.createdAt - a.createdAt)[0];
+  const sortedForChart = [...reports].sort((a, b) => a.dateLocal.localeCompare(b.dateLocal));
+  const chartData = sortedForChart.slice(-7).map(r => ({
+    name: r.dateLocal.slice(5),
+    net: r.totals.net
+  }));
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setStartDate('');
+    setEndDate('');
+    setShowFilters(false);
+  };
+
+  const hasFilters = searchTerm || startDate || endDate;
+
+  return (
+    <div className="min-h-screen bg-gray-50/50 pb-28 font-sans">
+      {/* Header Area */}
+      <header className={`bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl transition-all duration-300 relative overflow-hidden ${viewMode === 'history' ? 'pb-8' : ''}`}>
+        {/* Abstract Background Pattern */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-10 pointer-events-none">
+           <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl"></div>
+           <div className="absolute bottom-0 left-0 w-60 h-60 bg-brand-300 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="relative z-10 flex justify-between items-start">
+            <div>
+                <h1 className="text-3xl font-extrabold mb-1 tracking-tight">
+                  {viewMode === 'home' ? 'Daily Sales' : 'History'}
+                </h1>
+                <p className="text-brand-100 text-sm font-medium opacity-90">
+                  {viewMode === 'home' ? 'Overview & Insights' : 'Archive & Search'}
+                </p>
+            </div>
+            <div className="flex gap-2">
+              {viewMode === 'history' && (
+                <button 
+                  onClick={toggleSelectionMode} 
+                  className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1 transition-all font-semibold shadow-sm active:scale-95 ${isSelectionMode ? 'bg-white text-brand-600' : 'bg-white/20 backdrop-blur-md text-white hover:bg-white/30'}`}
+                >
+                  <CheckSquare size={14} /> {isSelectionMode ? 'Done' : 'Select'}
+                </button>
+              )}
+              {viewMode === 'history' && hasFilters && (
+                  <button onClick={resetFilters} className="text-xs bg-brand-800 hover:bg-brand-900 px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors shadow-sm active:scale-95">
+                      <RefreshCw size={12} />
+                  </button>
+              )}
+            </div>
+        </div>
+        
+        {/* Search Bar - Only in History Mode */}
+        {viewMode === 'history' && !isSelectionMode && (
+          <div className="mt-8 flex gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="relative flex-1 group">
+              <input 
+                type="text" 
+                placeholder="Search store name..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white/10 border border-white/20 backdrop-blur-md rounded-2xl py-3.5 pl-11 pr-4 text-white placeholder-brand-200 focus:outline-none focus:bg-white/20 focus:border-white/40 transition-all text-sm shadow-inner group-hover:bg-white/15"
+              />
+              <Search className="absolute left-4 top-3.5 text-brand-200 group-hover:text-white transition-colors" size={18} />
+            </div>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`p-3.5 rounded-2xl border transition-all active:scale-95 ${showFilters ? 'bg-white text-brand-600 border-white shadow-lg' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'}`}
+            >
+              <Filter size={20} />
+            </button>
+          </div>
+        )}
+
+        {/* Filters Panel */}
+        {viewMode === 'history' && showFilters && !isSelectionMode && (
+            <div className="mt-4 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
+                <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-brand-200 ml-2 tracking-wider">From Date</label>
+                    <input 
+                        type="date" 
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl py-2.5 px-3 text-white text-sm focus:outline-none focus:bg-white/20 transition-colors" 
+                    />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-brand-200 ml-2 tracking-wider">To Date</label>
+                    <input 
+                        type="date" 
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-xl py-2.5 px-3 text-white text-sm focus:outline-none focus:bg-white/20 transition-colors" 
+                    />
+                </div>
+            </div>
+        )}
+      </header>
+
+      <div className="px-5 -mt-6 relative z-20">
+        {loading ? (
+          <div className="bg-white p-10 rounded-2xl shadow-lg border border-gray-100 flex flex-col items-center justify-center animate-in fade-in duration-500">
+             <Loader2 size={36} className="text-brand-500 animate-spin mb-3"/>
+             <span className="text-gray-400 text-sm font-medium">Syncing data...</span>
+          </div>
+        ) : (
+          <>
+            {/* Chart Card */}
+            {viewMode === 'home' && chartData.length > 0 && (
+              <div className="bg-white p-5 rounded-2xl shadow-lg shadow-gray-200/50 border border-gray-100 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center justify-between mb-6">
+                   <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2 tracking-wider">
+                     <div className="p-1 bg-brand-50 rounded-md"><TrendingUp size={14} className="text-brand-600" /></div>
+                     Trend
+                   </h3>
+                   <span className="text-[10px] text-brand-600 font-bold bg-brand-50 px-2.5 py-1 rounded-full border border-brand-100">Last 7 Days</span>
+                </div>
+                <div className="h-32 w-full">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                    <BarChart data={chartData}>
+                      <XAxis dataKey="name" tick={{fontSize: 10, fill: '#9ca3af'}} tickLine={false} axisLine={false} dy={10} />
+                      <Tooltip 
+                        contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '8px 12px'}}
+                        itemStyle={{color: '#0284c7', fontSize: '13px', fontWeight: 'bold'}}
+                        cursor={{fill: '#f0f9ff', radius: 4}}
+                      />
+                      <Bar dataKey="net" radius={[6, 6, 6, 6]} barSize={24}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={index === chartData.length -1 ? 'url(#colorNet)' : '#e0f2fe'} />
+                        ))}
+                      </Bar>
+                      <defs>
+                        <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#0ea5e9" stopOpacity={1}/>
+                          <stop offset="100%" stopColor="#0284c7" stopOpacity={1}/>
+                        </linearGradient>
+                      </defs>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* HOME VIEW: Latest Report Card */}
+            {viewMode === 'home' && (
+              <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
+                 {mostRecentReport ? (
+                   <div 
+                      onClick={() => navigate(`/report/${mostRecentReport.reportId}`)}
+                      className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xl shadow-brand-900/5 active:scale-[0.98] transition-all cursor-pointer group relative overflow-hidden"
+                    >
+                      {/* Decorative Background */}
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-brand-50/50 rounded-full -mr-10 -mt-10 blur-2xl group-hover:bg-brand-100/50 transition-colors"></div>
+                      
+                      <div className="relative z-10">
+                        <div className="flex justify-between items-start mb-3">
+                           <span className="bg-gray-900 text-white text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm">
+                              <Calendar size={12}/> {mostRecentReport.dateLocal}
+                           </span>
+                           <span className="text-gray-400 text-xs font-medium bg-gray-50 px-2 py-1 rounded-md">{mostRecentReport.timeLocal}</span>
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-1 line-clamp-1">{mostRecentReport.storeName}</h3>
+                        <p className="text-xs text-gray-500 mb-4">{mostRecentReport.items.length} items recorded</p>
+                        
+                        <div className="flex items-end justify-between border-t border-gray-50 pt-4">
+                           <div className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-brand-800">
+                              {formatCurrency(mostRecentReport.totals.net)}
+                           </div>
+                           <div className="h-8 w-8 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-all shadow-sm">
+                             <ChevronRight size={18} />
+                           </div>
+                        </div>
+                      </div>
+                   </div>
+                 ) : (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200 shadow-sm">
+                       <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <FileText className="text-gray-300" size={24} />
+                       </div>
+                       <p className="text-gray-500 font-medium">No reports created yet.</p>
+                       <p className="text-gray-400 text-sm mt-1">Tap + to start your first report.</p>
+                    </div>
+                 )}
+              </div>
+            )}
+
+            {/* HISTORY VIEW: Full List */}
+            {viewMode === 'history' && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-bottom-8 duration-500 mt-2 pb-4">
+                {isSelectionMode && (
+                  <div className="text-center text-xs text-brand-700 font-bold bg-brand-50 p-2.5 rounded-xl mb-4 border border-brand-100 flex justify-center items-center gap-2">
+                    <CheckSquare size={14}/> Select items to delete ({selectedIds.size})
+                  </div>
+                )}
+                {filteredReports.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200 shadow-sm mt-4">
+                    <div className="bg-gray-50 p-5 rounded-full mb-4">
+                       <FileText size={32} className="text-gray-300" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-600">
+                        {hasFilters ? 'No reports match your filters.' : 'No reports yet.'}
+                    </p>
+                  </div>
+                ) : (
+                  filteredReports.map((report) => (
+                    <div 
+                      key={report.reportId}
+                      onClick={() => {
+                        if (isSelectionMode) {
+                          toggleReportSelection(report.reportId);
+                        } else {
+                          navigate(`/report/${report.reportId}`);
+                        }
+                      }}
+                      className={`bg-white p-4 rounded-2xl border shadow-sm transition-all cursor-pointer flex justify-between items-center group relative overflow-hidden ${
+                        isSelectionMode 
+                           ? selectedIds.has(report.reportId) ? 'border-brand-500 ring-2 ring-brand-500 bg-brand-50/50' : 'border-gray-100 opacity-60 grayscale-[0.5]'
+                           : 'border-gray-100 hover:border-brand-200 hover:shadow-md active:scale-[0.98]'
+                      }`}
+                    >
+                      {/* Selection Checkbox */}
+                      {isSelectionMode && (
+                        <div className={`mr-4 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.has(report.reportId) ? 'bg-brand-500 border-brand-500' : 'bg-white border-gray-300'}`}>
+                          {selectedIds.has(report.reportId) && <Check size={14} className="text-white" strokeWidth={3} />}
+                        </div>
+                      )}
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded text-gray-600 shadow-sm">
+                              <Calendar size={10} className="text-gray-400" />
+                              <span className="text-[10px] font-bold uppercase tracking-wide">{report.dateLocal}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-medium">{report.timeLocal}</span>
+                        </div>
+                        <p className="text-sm font-bold text-gray-900 truncate pr-2">{report.storeName}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="block text-base font-bold text-brand-600">{formatCurrency(report.totals.net)}</span>
+                        {!isSelectionMode && (
+                          <div className="flex items-center justify-end text-gray-400 text-[10px] mt-1 font-medium uppercase tracking-wide group-hover:text-brand-400 transition-colors">
+                            {report.items.length} items <ChevronRight size={10} className="ml-1" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Floating Bottom Action Bar */}
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-50">
+        
+        {/* SELECTION MODE ACTIONS */}
+        {isSelectionMode ? (
+           <div className="flex gap-3 animate-in slide-in-from-bottom-6 duration-300">
+              <button 
+                onClick={toggleSelectionMode}
+                className="flex-1 h-14 bg-white/90 backdrop-blur-md border border-gray-200 text-gray-700 font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2 hover:bg-white active:scale-95 transition-all"
+              >
+                <X size={20} /> Cancel
+              </button>
+              <button 
+                onClick={deleteSelectedReports}
+                disabled={selectedIds.size === 0}
+                className="flex-1 h-14 bg-red-500 text-white font-bold rounded-2xl shadow-xl shadow-red-500/30 flex items-center justify-center gap-2 hover:bg-red-600 active:scale-95 transition-all disabled:opacity-50 disabled:shadow-none"
+              >
+                <Trash2 size={20} /> Delete ({selectedIds.size})
+              </button>
+           </div>
+        ) : (
+          /* NORMAL MODE ACTIONS */
+          <div className="bg-white/80 backdrop-blur-xl border border-white/40 p-2 rounded-[2rem] shadow-2xl shadow-gray-200/50 flex items-center justify-between pl-3 pr-2 gap-4 ring-1 ring-gray-200/50">
+            
+            {/* View Toggle */}
+            <div className="flex bg-gray-100/80 p-1 rounded-full relative">
+               {/* Sliding Pill */}
+               <div 
+                 className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full shadow-sm transition-all duration-300 ease-out ${viewMode === 'home' ? 'left-1' : 'left-[calc(50%+2px)]'}`}
+               ></div>
+               
+               <button 
+                  onClick={() => setViewMode('home')}
+                  className={`relative z-10 w-12 h-10 rounded-full flex items-center justify-center transition-colors duration-300 ${viewMode === 'home' ? 'text-brand-600' : 'text-gray-400'}`}
+               >
+                  <LayoutDashboard size={20} />
+               </button>
+               <button 
+                  onClick={() => setViewMode('history')}
+                  className={`relative z-10 w-12 h-10 rounded-full flex items-center justify-center transition-colors duration-300 ${viewMode === 'history' ? 'text-brand-600' : 'text-gray-400'}`}
+               >
+                  <History size={20} />
+               </button>
+            </div>
+
+            {/* Create Button */}
+            <button 
+              onClick={() => navigate('/new')}
+              className="h-14 px-8 bg-gray-900 text-white rounded-[1.5rem] shadow-lg shadow-gray-900/20 flex items-center justify-center gap-2 hover:bg-black active:scale-95 transition-all group"
+            >
+              <Plus size={24} className="group-hover:rotate-90 transition-transform duration-300" />
+              <span className="font-bold text-sm">New Report</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+};
+
+export default Dashboard;
