@@ -64,25 +64,42 @@ Rules:
    - Handle "name price" where quantity is implied as 1. Example: "Samsung S24 4500" -> {quantity: 1, productName: "Samsung S24", unitPrice: 4500}.
 
 9. General:
+   - Do NOT aggregate or sum up separate entries of the same item. If the input lists "1 iPhone" and later "1 iPhone", output two separate items.
    - If the input describes a return or refund, use negative quantities or ensure it's noted.
    - "notes" should capture details like color, capacity, or condition (e.g., "128GB Black", "Damaged box").
    - Return ONLY the JSON array of items.
 `;
 
-// Helper for safe environment variable access in Vite/Vercel (Browser)
+// Helper for safe environment variable access
 const getApiKey = () => {
-  // Check process.env (Node/Compat)
-  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    return process.env.API_KEY;
-  }
-  // Check import.meta.env (Vite standard)
-  // @ts-ignore
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+  let key = '';
+
+  // 1. Try process.env.API_KEY directly.
+  // Many bundlers (Webpack, Vite with define) replace this string literal at build time.
+  // We use a try-catch because in a pure browser env without replacement, 'process' is not defined.
+  try {
     // @ts-ignore
-    return import.meta.env.VITE_API_KEY;
+    key = process.env.API_KEY;
+  } catch (e) {
+    // ignore ReferenceError if process is not defined
+  }
+
+  // 2. Try Vite's import.meta.env.VITE_API_KEY
+  if (!key) {
+    try {
+      // @ts-ignore
+      if (typeof import.meta !== 'undefined' && import.meta.env) {
+        // @ts-ignore
+        key = import.meta.env.VITE_API_KEY;
+      }
+    } catch (e) {}
   }
   
-  throw new Error("API Key not found. Please check your configuration.");
+  if (!key) {
+    throw new Error("Configuration Error: Google API Key not found. Please set VITE_API_KEY in your environment variables.");
+  }
+  
+  return key;
 };
 
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
@@ -121,7 +138,7 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Analyze this image/document (which may be a photo, screenshot, or PDF) and extract the sales items (product, qty, price, currency). Even if the image is low quality, blurry, contains screen glare, or is a screenshot of a digital list with UI elements, attempt to extract all readable text and data content relevant to sales." }
+          { text: "Analyze this image/document (which may be a photo, screenshot, or PDF) and extract the sales items (product, qty, price, currency). Even if the image is low quality, blurry, contains screen glare, or is a screenshot of a digital list with UI elements, attempt to extract all readable text and data content relevant to sales. Do not merge separate items." }
         ]
       },
       config: {

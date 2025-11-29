@@ -144,6 +144,32 @@ export const getReportById = async (id: string): Promise<DailyReport | undefined
   return mapFromDb(data);
 };
 
+export const uploadFile = async (file: File): Promise<string | null> => {
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+    const { data, error } = await supabase.storage
+      .from('uploads') // Assuming 'uploads' bucket. If not present, will error.
+      .upload(fileName, file);
+
+    if (error) {
+      console.warn('Upload failed (check if bucket "uploads" exists):', error.message);
+      return null;
+    }
+
+    if (!data?.path) return null;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('uploads')
+      .getPublicUrl(data.path);
+
+    return publicUrl;
+  } catch (e) {
+    console.error('Upload error:', e);
+    return null;
+  }
+};
+
 // Keep Config in LocalStorage for simplicity (per-device preference)
 export const saveConfig = (config: AppConfig) => {
   localStorage.setItem(LOCAL_STORAGE_KEYS.CONFIG, JSON.stringify(config));
