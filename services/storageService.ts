@@ -1,4 +1,5 @@
-import { DailyReport, AppConfig } from '../types';
+
+import { DailyReport, AppConfig, SalesItem } from '../types';
 import { LOCAL_STORAGE_KEYS } from '../constants';
 import { supabase } from './supabaseClient';
 
@@ -167,6 +168,21 @@ export const uploadFile = async (file: File): Promise<string | null> => {
   } catch (e) {
     console.error('Upload error:', e);
     return null;
+  }
+};
+
+// New function to log OCR analysis to the separate 'reports' table
+export const saveOcrLog = async (imageUrl: string, analysis: SalesItem[]): Promise<void> => {
+  const { error } = await supabase
+    .from('reports')
+    .insert({
+      image_url: imageUrl,
+      analysis: JSON.stringify(analysis)
+    });
+
+  if (error) {
+    // Non-blocking log
+    console.warn('Error logging OCR analysis to reports table:', error.message);
   }
 };
 

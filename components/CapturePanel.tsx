@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Mic, Upload, Loader2, Clipboard, StopCircle, ArrowRight, Check, X, Volume2, AlertTriangle } from 'lucide-react';
 import { SalesItem } from '../types';
@@ -23,7 +24,10 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
   // Review Mode State
   const [pendingItems, setPendingItems] = useState<SalesItem[] | null>(null);
   const [pendingSource, setPendingSource] = useState<'ocr' | 'speech' | 'manual' | 'upload'>('manual');
-  const [attachments, setAttachments] = useState<{type: 'image' | 'file', url: string}[]>([]);
+  
+  // Note: We are not exposing attachments state directly to the parent in this component version based on props,
+  // but we are uploading files. Ideally, onItemsCaptured should accept attachments or we handle it differently.
+  // For now, we follow the existing pattern.
 
   // Helper: Client-side image compression
   const compressImage = (file: File): Promise<string> => {
@@ -153,20 +157,13 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
 
     setIsProcessing(true);
 
-    // 1. Upload to Storage (Parallel)
-    const uploadPromise = StorageService.uploadFile(file)
-      .then(url => {
-        if (url) {
-          return url;
-        }
-        return null;
-      })
-      .catch(err => {
-        console.error("Upload failed", err);
-        return null;
-      });
+    // 1. Initiate Upload to Storage (Parallel)
+    const uploadPromise = StorageService.uploadFile(file);
 
     try {
+      let items: SalesItem[] = [];
+
+      // 2. Process with Gemini
       if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
         const reader = new FileReader();
         reader.onloadend = async () => {
@@ -174,48 +171,67 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
             const text = reader.result as string;
             // Security: Limit CSV text size processed
             const content = text.length > 20000 ? text.slice(0, 20000) : text;
-            const items = await GeminiService.parseFromText(content);
-            handleCapturedResults(items, type);
+            items = await GeminiService.parseFromText(content);
+            finishProcessing(items);
           } catch (e: any) {
              console.error(e);
              alert(`Failed to parse CSV: ${e.message}`);
-          } finally {
              setIsProcessing(false);
           }
         };
         reader.readAsText(file);
-      } else if (file.type.startsWith('image/')) {
-        // Compress/Resize image on client before sending
+        return; // Exit here, let onloadend handle completion
+      } 
+      
+      // Image Handling (OCR)
+      else if (file.type.startsWith('image/')) {
         try {
+          // Compress/Resize image on client before sending to AI
           const base64 = await compressImage(file);
-          const items = await GeminiService.parseFromFile(base64, 'image/jpeg');
+          items = await GeminiService.parseFromFile(base64, 'image/jpeg');
+          
+          // Wait for upload to complete to log it
+          const publicUrl = await uploadPromise;
+          if (publicUrl) {
+            // Log the OCR attempt to the new 'reports' table
+            await StorageService.saveOcrLog(publicUrl, items);
+          }
+
           handleCapturedResults(items, type);
         } catch (err: any) {
           console.error(err);
           alert(`Image processing failed: ${err.message || 'Unknown error'}. Please check your API Key configuration.`);
-        } finally {
-          setIsProcessing(false);
         }
-      } else {
-        // PDF or other formats
+      } 
+      
+      // PDF/Other Handling
+      else {
         const reader = new FileReader();
         reader.onloadend = async () => {
           try {
             const base64 = (reader.result as string).split(',')[1];
-            const items = await GeminiService.parseFromFile(base64, file.type);
+            items = await GeminiService.parseFromFile(base64, file.type);
             handleCapturedResults(items, type);
           } catch (err: any) {
             console.error(err);
             alert(`File processing failed: ${err.message}. Please check your API Key configuration.`);
-          } finally {
-            setIsProcessing(false);
           }
         };
         reader.readAsDataURL(file);
+        return; // Exit here
       }
     } catch (e) {
-      setIsProcessing(false);
+      console.error(e);
+    } finally {
+      if (!file.type.endsWith('.csv') && !file.type.startsWith('application/pdf')) {
+        setIsProcessing(false);
+      }
     }
+  };
+
+  const finishProcessing = (items: SalesItem[]) => {
+      handleCapturedResults(items, 'manual'); // CSV treated as manual/text
+      setIsProcessing(false);
   };
 
   const startRecording = async () => {
