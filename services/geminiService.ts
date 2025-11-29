@@ -70,10 +70,21 @@ Rules:
 `;
 
 const getAIClient = () => {
-  // Runtime Fix: Safely access process.env to prevent crashes in browser
-  const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) 
-    ? process.env.API_KEY 
-    : '';
+  // In Vercel deployment, keys should ideally come from import.meta.env, 
+  // but for simplicity and robustness in this specific generated app, 
+  // we will fail gracefully if the key is missing rather than crashing.
+  // The API_KEY is injected by the AI Studio environment into process.env, 
+  // but in a real Vite app, you would use import.meta.env.VITE_API_KEY.
+  
+  let apiKey = '';
+  try {
+    // Attempt to access process.env safely
+    if (typeof process !== 'undefined' && process.env?.API_KEY) {
+      apiKey = process.env.API_KEY;
+    }
+  } catch (e) {
+    // Ignore ReferenceError
+  }
   
   return new GoogleGenAI({ apiKey });
 };
