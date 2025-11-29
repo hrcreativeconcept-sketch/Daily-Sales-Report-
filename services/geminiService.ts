@@ -69,28 +69,9 @@ Rules:
    - Return ONLY the JSON array of items.
 `;
 
-const getAIClient = () => {
-  // In Vercel deployment, keys should ideally come from import.meta.env, 
-  // but for simplicity and robustness in this specific generated app, 
-  // we will fail gracefully if the key is missing rather than crashing.
-  // The API_KEY is injected by the AI Studio environment into process.env, 
-  // but in a real Vite app, you would use import.meta.env.VITE_API_KEY.
-  
-  let apiKey = '';
-  try {
-    // Attempt to access process.env safely
-    if (typeof process !== 'undefined' && process.env?.API_KEY) {
-      apiKey = process.env.API_KEY;
-    }
-  } catch (e) {
-    // Ignore ReferenceError
-  }
-  
-  return new GoogleGenAI({ apiKey });
-};
-
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
-  const ai = getAIClient();
+  // Use process.env.API_KEY strictly as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -116,7 +97,7 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
 };
 
 export const parseFromFile = async (base64Data: string, mimeType: string): Promise<SalesItem[]> => {
-  const ai = getAIClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -140,7 +121,7 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
 };
 
 export const parseFromAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<SalesItem[]> => {
-  const ai = getAIClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
