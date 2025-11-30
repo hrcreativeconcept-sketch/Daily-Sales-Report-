@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { SalesItem } from '../types';
 import { Trash2, Plus, AlertCircle, X, AlertTriangle } from 'lucide-react';
@@ -36,16 +37,24 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
   };
 
   const removeItem = (index: number) => {
-    if (confirm('Remove this item?')) {
-      onChange(items.filter((_, i) => i !== index));
-    }
+    // Removed confirm dialog: User can use "Undo" if this was a mistake.
+    // This ensures the button works instantly on mobile.
+    onChange(items.filter((_, i) => i !== index));
   };
 
-  const addItem = () => {
+  const addItem = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
     onChange([
       ...items,
       { productName: '', sku: '', quantity: 1, unitPrice: 0, currency: 'AED', notes: '' }
     ]);
+  };
+
+  const clearAll = (e: React.MouseEvent) => {
+    e.preventDefault(); 
+    e.stopPropagation();
+    // Removed confirm dialog: User can use "Undo" if this was a mistake.
+    onChange([]);
   };
 
   return (
@@ -63,15 +72,16 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
             'border-gray-100 hover:border-gray-300 hover:shadow-md'
           }`}>
             
-            {/* Elegant Delete Button */}
-            <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Elegant Delete Button - Always Visible on Mobile */}
+            <div className="absolute top-2 right-2 z-10">
               <button 
                 type="button"
                 onClick={() => removeItem(index)}
-                className="text-gray-300 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors"
+                className="text-red-300 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors active:bg-red-100"
                 aria-label="Remove item"
+                title="Remove item"
               >
-                <X size={18} />
+                <X size={20} strokeWidth={2.5} />
               </button>
             </div>
 
@@ -84,10 +94,10 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
             
             <div className="grid grid-cols-12 gap-x-3 gap-y-3">
               {/* Row 1: Product & SKU */}
-              <div className="col-span-12 pr-6">
+              <div className="col-span-12 pr-10">
                 <input 
                   type="text" 
-                  value={item.productName}
+                  value={item.productName || ''}
                   maxLength={200}
                   onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
                   className={`w-full bg-transparent text-base font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:placeholder-gray-400 transition-colors border-b border-transparent focus:border-brand-500 pb-1 ${
@@ -104,7 +114,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
                 {/* SKU - Quiet Input */}
                 <input 
                   type="text" 
-                  value={item.sku}
+                  value={item.sku || ''}
                   maxLength={50}
                   onChange={(e) => handleItemChange(index, 'sku', e.target.value)}
                   className="w-full text-xs text-gray-500 font-mono bg-transparent focus:outline-none focus:text-gray-800 placeholder-gray-300 mt-1"
@@ -126,7 +136,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
               </div>
               
               <div className="col-span-5 bg-gray-50 rounded-xl px-3 py-1.5 flex flex-col justify-center">
-                <label className="text-[9px] font-bold text-gray-400 uppercase text-right mb-0.5">Price ({item.currency})</label>
+                <label className="text-[9px] font-bold text-gray-400 uppercase text-right mb-0.5">Price ({item.currency || 'AED'})</label>
                 <input 
                   type="number" 
                   value={item.unitPrice}
@@ -141,7 +151,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
               <div className="col-span-3 flex flex-col justify-center items-end pr-1">
                 <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5">Total</span>
                 <span className="text-sm font-extrabold text-brand-600">
-                  {formatCurrency(item.quantity * item.unitPrice, item.currency)}
+                  {formatCurrency((item.quantity || 0) * (item.unitPrice || 0), item.currency)}
                 </span>
               </div>
 
@@ -176,6 +186,7 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
             {errors[-1]?.items || 'List is empty'}
           </p>
           <button 
+            type="button"
             onClick={addItem}
             className="inline-flex items-center gap-2 px-6 py-2.5 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 active:scale-95 transition-all"
           >
@@ -185,15 +196,27 @@ const ItemsTable: React.FC<ItemsTableProps> = ({ items, onChange, isParsing = fa
         </div>
       )}
 
-      {/* Footer Add Button (only if items exist) */}
+      {/* Footer Buttons (only if items exist) */}
       {!isParsing && items.length > 0 && (
-        <button 
-          onClick={addItem}
-          className="w-full py-4 bg-white border border-gray-200 border-dashed rounded-2xl text-sm text-gray-400 font-bold hover:bg-brand-50 hover:border-brand-300 hover:text-brand-600 transition-all flex items-center justify-center gap-2 active:scale-[0.99] shadow-sm"
-        >
-          <Plus size={18} />
-          Add Item
-        </button>
+        <div className="flex gap-3">
+          <button 
+            type="button"
+            onClick={clearAll}
+            className="px-6 py-4 bg-white border border-red-100 border-dashed rounded-2xl text-sm text-red-500 font-bold hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all flex items-center justify-center gap-2 active:scale-[0.99] shadow-sm"
+            title="Clear all items"
+          >
+            <Trash2 size={18} />
+            Clear All
+          </button>
+          <button 
+            type="button"
+            onClick={addItem}
+            className="flex-1 py-4 bg-white border border-gray-200 border-dashed rounded-2xl text-sm text-gray-400 font-bold hover:bg-brand-50 hover:border-brand-300 hover:text-brand-600 transition-all flex items-center justify-center gap-2 active:scale-[0.99] shadow-sm"
+          >
+            <Plus size={18} />
+            Add Item
+          </button>
+        </div>
       )}
     </div>
   );

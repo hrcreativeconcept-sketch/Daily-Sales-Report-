@@ -130,7 +130,7 @@ const ReportEditor: React.FC = () => {
     report.items.forEach((item, index) => {
       const itemErrors: { [key in keyof SalesItem]?: string } = {};
 
-      if (!item.productName || !item.productName.trim()) {
+      if (!item.productName || !(item.productName || '').trim()) {
         itemErrors.productName = "Required";
         isValid = false;
       }
@@ -157,16 +157,18 @@ const ReportEditor: React.FC = () => {
   const handleSave = async () => {
     if (!report) return false;
     
-    // Trim string fields
-    report.salesRepName = report.salesRepName.trim();
+    // Trim string fields safely (handle undefined/null)
+    const salesRepName = (report.salesRepName || '').trim();
+    report.salesRepName = salesRepName;
+    
     report.items = report.items.map(i => ({
       ...i,
-      productName: i.productName.trim(),
-      sku: i.sku.trim(),
-      notes: i.notes?.trim() || ''
+      productName: (i.productName || '').trim(),
+      sku: (i.sku || '').trim(),
+      notes: (i.notes || '').trim()
     }));
 
-    if (!report.salesRepName) {
+    if (!salesRepName) {
       alert("Please enter a Sales Rep Name");
       return false;
     }
@@ -334,7 +336,7 @@ const ReportEditor: React.FC = () => {
               <input 
                 list="timezones"
                 type="text" 
-                value={report.timezone}
+                value={report.timezone || ''}
                 onChange={(e) => updateReport({ timezone: e.target.value })}
                 className={`w-full text-sm font-medium bg-gray-50 border rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all ${!report.timezone ? 'border-red-300' : 'border-gray-200'}`}
                 placeholder="Select or type..."
@@ -371,7 +373,7 @@ const ReportEditor: React.FC = () => {
             <div className="relative group">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-500 transition-colors"><MapPin size={16}/></div>
               <select 
-                value={report.storeName}
+                value={report.storeName || ''}
                 onChange={(e) => updateReport({ storeName: e.target.value })}
                 className="w-full text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-8 py-3 appearance-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all"
               >
@@ -387,7 +389,7 @@ const ReportEditor: React.FC = () => {
                 <input 
                   type="text" 
                   placeholder="Your Name"
-                  value={report.salesRepName}
+                  value={report.salesRepName || ''}
                   onChange={(e) => updateReport({ salesRepName: e.target.value })}
                   className="w-full text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all placeholder-gray-300"
                 />
