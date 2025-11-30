@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check } from 'lucide-react';
 import { DailyReport } from '../types';
@@ -24,6 +25,10 @@ const Dashboard: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Long Press Refs
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPress = useRef(false);
+
   const fetchReports = async () => {
     setLoading(true);
     const data = await StorageService.loadReports();
@@ -35,39 +40,88 @@ const Dashboard: React.FC = () => {
     fetchReports();
   }, []);
 
-  // Selection Logic
-  const toggleSelectionMode = () => {
-    setIsSelectionMode(!isSelectionMode);
-    setSelectedIds(new Set()); // Clear selection on toggle
+  // --- Selection Logic ---
+
+  const enterSelectionMode = (initialId?: string) => {
+    setIsSelectionMode(true);
+    if (initialId) {
+      setSelectedIds(new Set([initialId]));
+    }
+  };
+
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedIds(new Set());
   };
 
   const toggleReportSelection = (id: string) => {
     const newSelected = new Set(selectedIds);
     if (newSelected.has(id)) {
       newSelected.delete(id);
+      // Optional: If last item deselected, exit selection mode? 
+      // providing a smoother UX, let's keep mode active until explicit Cancel.
     } else {
       newSelected.add(id);
     }
     setSelectedIds(newSelected);
   };
 
-  const deleteSelectedReports = async () => {
+  const deleteSelectedReports = async (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent ghost clicks
     if (selectedIds.size === 0) return;
 
-    if (window.confirm(`Delete ${selectedIds.size} selected reports?`)) {
-      setLoading(true);
-      try {
-        await StorageService.deleteReports(Array.from(selectedIds));
-        await fetchReports(); // Reload from DB
-        setIsSelectionMode(false);
-        setSelectedIds(new Set());
-      } catch (e) {
-        alert("Failed to delete selected reports.");
-      } finally {
-        setLoading(false);
-      }
+    // Immediate delete without confirm dialog (Undo pattern preferred for mobile)
+    setLoading(true);
+    try {
+      await StorageService.deleteReports(Array.from(selectedIds));
+      await fetchReports(); // Reload from DB
+      exitSelectionMode();
+    } catch (e) {
+      alert("Failed to delete selected reports.");
+    } finally {
+      setLoading(false);
     }
   };
+
+  // --- Long Press Handlers ---
+  const handleTouchStart = (id: string) => {
+    if (isSelectionMode) return; // No long press needed if already in mode
+    isLongPress.current = false;
+    longPressTimer.current = setTimeout(() => {
+      isLongPress.current = true;
+      enterSelectionMode(id);
+      // Vibrate if supported
+      if (navigator.vibrate) navigator.vibrate(50);
+    }, 600); // 600ms hold to trigger
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleTouchMove = () => {
+    // If user scrolls, cancel long press
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleCardClick = (id: string) => {
+    if (isLongPress.current) {
+      isLongPress.current = false;
+      return; // Already handled by timer
+    }
+
+    if (isSelectionMode) {
+      toggleReportSelection(id);
+    } else {
+      navigate(`/report/${id}`);
+    }
+  };
+
+  // --- Filtering ---
 
   const filteredReports = reports.filter(r => {
     const matchesSearch = !searchTerm || r.storeName.toLowerCase().includes(searchTerm.toLowerCase());
@@ -94,7 +148,7 @@ const Dashboard: React.FC = () => {
   const hasFilters = searchTerm || startDate || endDate;
 
   return (
-    <div className="min-h-screen bg-gray-50/50 pb-28 font-sans">
+    <div className="min-h-screen bg-gray-50/50 pb-32 font-sans">
       {/* Header Area */}
       <header className={`bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl transition-all duration-300 relative overflow-hidden ${viewMode === 'history' ? 'pb-8' : ''}`}>
         {/* Abstract Background Pattern */}
@@ -115,14 +169,15 @@ const Dashboard: React.FC = () => {
             <div className="flex gap-2">
               {viewMode === 'history' && (
                 <button 
-                  onClick={toggleSelectionMode} 
-                  className={`text-xs px-3 py-1.5 rounded-full flex items-center gap-1 transition-all font-semibold shadow-sm active:scale-95 ${isSelectionMode ? 'bg-white text-brand-600' : 'bg-white/20 backdrop-blur-md text-white hover:bg-white/30'}`}
+                  type="button"
+                  onClick={() => isSelectionMode ? exitSelectionMode() : enterSelectionMode()} 
+                  className={`text-xs px-4 py-2 rounded-full flex items-center gap-1.5 transition-all font-bold shadow-sm active:scale-95 ${isSelectionMode ? 'bg-white text-brand-700 shadow-md' : 'bg-white/20 backdrop-blur-md text-white hover:bg-white/30'}`}
                 >
-                  <CheckSquare size={14} /> {isSelectionMode ? 'Done' : 'Select'}
+                  <CheckSquare size={14} strokeWidth={2.5} /> {isSelectionMode ? 'Done' : 'Select'}
                 </button>
               )}
-              {viewMode === 'history' && hasFilters && (
-                  <button onClick={resetFilters} className="text-xs bg-brand-800 hover:bg-brand-900 px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors shadow-sm active:scale-95">
+              {viewMode === 'history' && hasFilters && !isSelectionMode && (
+                  <button type="button" onClick={resetFilters} className="text-xs bg-brand-800 hover:bg-brand-900 px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors shadow-sm active:scale-95">
                       <RefreshCw size={12} />
                   </button>
               )}
@@ -143,6 +198,7 @@ const Dashboard: React.FC = () => {
               <Search className="absolute left-4 top-3.5 text-brand-200 group-hover:text-white transition-colors" size={18} />
             </div>
             <button 
+              type="button"
               onClick={() => setShowFilters(!showFilters)}
               className={`p-3.5 rounded-2xl border transition-all active:scale-95 ${showFilters ? 'bg-white text-brand-600 border-white shadow-lg' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'}`}
             >
@@ -267,8 +323,9 @@ const Dashboard: React.FC = () => {
             {viewMode === 'history' && (
               <div className="space-y-3 animate-in fade-in slide-in-from-bottom-8 duration-500 mt-2 pb-4">
                 {isSelectionMode && (
-                  <div className="text-center text-xs text-brand-700 font-bold bg-brand-50 p-2.5 rounded-xl mb-4 border border-brand-100 flex justify-center items-center gap-2">
-                    <CheckSquare size={14}/> Select items to delete ({selectedIds.size})
+                  <div className="text-center text-xs text-brand-700 font-bold bg-brand-50 p-3 rounded-xl mb-4 border border-brand-100 flex justify-center items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                    <CheckSquare size={14} className="text-brand-600"/> 
+                    {selectedIds.size === 0 ? "Select items to delete" : `${selectedIds.size} selected`}
                   </div>
                 )}
                 {filteredReports.length === 0 ? (
@@ -281,49 +338,53 @@ const Dashboard: React.FC = () => {
                     </p>
                   </div>
                 ) : (
-                  filteredReports.map((report) => (
-                    <div 
-                      key={report.reportId}
-                      onClick={() => {
-                        if (isSelectionMode) {
-                          toggleReportSelection(report.reportId);
-                        } else {
-                          navigate(`/report/${report.reportId}`);
-                        }
-                      }}
-                      className={`bg-white p-4 rounded-2xl border shadow-sm transition-all cursor-pointer flex justify-between items-center group relative overflow-hidden ${
-                        isSelectionMode 
-                           ? selectedIds.has(report.reportId) ? 'border-brand-500 ring-2 ring-brand-500 bg-brand-50/50' : 'border-gray-100 opacity-60 grayscale-[0.5]'
-                           : 'border-gray-100 hover:border-brand-200 hover:shadow-md active:scale-[0.98]'
-                      }`}
-                    >
-                      {/* Selection Checkbox */}
-                      {isSelectionMode && (
-                        <div className={`mr-4 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedIds.has(report.reportId) ? 'bg-brand-500 border-brand-500' : 'bg-white border-gray-300'}`}>
-                          {selectedIds.has(report.reportId) && <Check size={14} className="text-white" strokeWidth={3} />}
-                        </div>
-                      )}
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded text-gray-600 shadow-sm">
-                              <Calendar size={10} className="text-gray-400" />
-                              <span className="text-[10px] font-bold uppercase tracking-wide">{report.dateLocal}</span>
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-medium">{report.timeLocal}</span>
-                        </div>
-                        <p className="text-sm font-bold text-gray-900 truncate pr-2">{report.storeName}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="block text-base font-bold text-brand-600">{formatCurrency(report.totals.net)}</span>
-                        {!isSelectionMode && (
-                          <div className="flex items-center justify-end text-gray-400 text-[10px] mt-1 font-medium uppercase tracking-wide group-hover:text-brand-400 transition-colors">
-                            {report.items.length} items <ChevronRight size={10} className="ml-1" />
+                  filteredReports.map((report) => {
+                    const isSelected = selectedIds.has(report.reportId);
+                    return (
+                      <div 
+                        key={report.reportId}
+                        // Touch Events for Long Press
+                        onTouchStart={() => handleTouchStart(report.reportId)}
+                        onTouchEnd={handleTouchEnd}
+                        onTouchMove={handleTouchMove}
+                        // Mouse/Click Events
+                        onClick={() => handleCardClick(report.reportId)}
+                        className={`bg-white p-4 rounded-2xl border shadow-sm transition-all cursor-pointer flex justify-between items-center group relative overflow-hidden select-none ${
+                          isSelectionMode 
+                             ? isSelected 
+                                ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50/30' 
+                                : 'border-gray-100 opacity-100' // Keep full opacity to make selection easier
+                             : 'border-gray-100 hover:border-brand-200 hover:shadow-md active:scale-[0.98]'
+                        }`}
+                      >
+                        {/* Selection Checkbox */}
+                        {isSelectionMode && (
+                          <div className={`mr-4 w-6 h-6 min-w-[1.5rem] rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? 'bg-brand-500 border-brand-500 scale-110' : 'bg-white border-gray-300'}`}>
+                            {isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
                           </div>
                         )}
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded text-gray-600 shadow-sm">
+                                <Calendar size={10} className="text-gray-400" />
+                                <span className="text-[10px] font-bold uppercase tracking-wide">{report.dateLocal}</span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-medium">{report.timeLocal}</span>
+                          </div>
+                          <p className={`text-sm font-bold truncate pr-2 ${isSelected ? 'text-brand-900' : 'text-gray-900'}`}>{report.storeName}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`block text-base font-bold ${isSelected ? 'text-brand-700' : 'text-brand-600'}`}>{formatCurrency(report.totals.net)}</span>
+                          {!isSelectionMode && (
+                            <div className="flex items-center justify-end text-gray-400 text-[10px] mt-1 font-medium uppercase tracking-wide group-hover:text-brand-400 transition-colors">
+                              {report.items.length} items <ChevronRight size={10} className="ml-1" />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
@@ -338,17 +399,20 @@ const Dashboard: React.FC = () => {
         {isSelectionMode ? (
            <div className="flex gap-3 animate-in slide-in-from-bottom-6 duration-300">
               <button 
-                onClick={toggleSelectionMode}
+                type="button"
+                onClick={exitSelectionMode}
                 className="flex-1 h-14 bg-white/90 backdrop-blur-md border border-gray-200 text-gray-700 font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2 hover:bg-white active:scale-95 transition-all"
               >
                 <X size={20} /> Cancel
               </button>
               <button 
+                type="button"
                 onClick={deleteSelectedReports}
                 disabled={selectedIds.size === 0}
-                className="flex-1 h-14 bg-red-500 text-white font-bold rounded-2xl shadow-xl shadow-red-500/30 flex items-center justify-center gap-2 hover:bg-red-600 active:scale-95 transition-all disabled:opacity-50 disabled:shadow-none"
+                className="flex-[2] h-14 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-600/30 flex items-center justify-center gap-2 hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50 disabled:shadow-none"
               >
-                <Trash2 size={20} /> Delete ({selectedIds.size})
+                <Trash2 size={20} fill="currentColor" className="text-red-600/20" /> 
+                <span>Delete ({selectedIds.size})</span>
               </button>
            </div>
         ) : (
@@ -363,12 +427,14 @@ const Dashboard: React.FC = () => {
                ></div>
                
                <button 
+                  type="button"
                   onClick={() => setViewMode('home')}
                   className={`relative z-10 w-12 h-10 rounded-full flex items-center justify-center transition-colors duration-300 ${viewMode === 'home' ? 'text-brand-600' : 'text-gray-400'}`}
                >
                   <LayoutDashboard size={20} />
                </button>
                <button 
+                  type="button"
                   onClick={() => setViewMode('history')}
                   className={`relative z-10 w-12 h-10 rounded-full flex items-center justify-center transition-colors duration-300 ${viewMode === 'history' ? 'text-brand-600' : 'text-gray-400'}`}
                >
@@ -378,6 +444,7 @@ const Dashboard: React.FC = () => {
 
             {/* Create Button */}
             <button 
+              type="button"
               onClick={() => navigate('/new')}
               className="h-14 px-8 bg-gray-900 text-white rounded-[1.5rem] shadow-lg shadow-gray-900/20 flex items-center justify-center gap-2 hover:bg-black active:scale-95 transition-all group"
             >
