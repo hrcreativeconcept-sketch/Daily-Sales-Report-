@@ -68,8 +68,6 @@ const ReportEditor: React.FC = () => {
   }, [id, isNew, navigate, initReport]);
 
   // Atomic Update Function
-  // Handles all field updates + re-calculations (Totals, ShareMessage) in one go
-  // This ensures history states are always valid and complete.
   const updateReport = useCallback((changes: Partial<DailyReport>) => {
     if (!report) return;
     
@@ -154,18 +152,34 @@ const ReportEditor: React.FC = () => {
     return isValid;
   };
 
+  // Helper: Sanitize input to prevent XSS (HTML tags) and CSV Injection
+  const sanitizeInput = (input: string): string => {
+    if (!input) return '';
+    
+    // 1. Strip HTML tags
+    let clean = input.replace(/<\/?[^>]+(>|$)/g, "");
+    
+    // 2. Prevent CSV Formula Injection
+    // If string starts with =, +, -, or @, prepend a single quote to force it as text
+    if (/^[=+\-@]/.test(clean)) {
+      clean = "'" + clean;
+    }
+    
+    return clean.trim();
+  };
+
   const handleSave = async () => {
     if (!report) return false;
     
-    // Trim string fields safely (handle undefined/null)
-    const salesRepName = (report.salesRepName || '').trim();
+    // Sanitize text fields
+    const salesRepName = sanitizeInput(report.salesRepName);
     report.salesRepName = salesRepName;
     
     report.items = report.items.map(i => ({
       ...i,
-      productName: (i.productName || '').trim(),
-      sku: (i.sku || '').trim(),
-      notes: (i.notes || '').trim()
+      productName: sanitizeInput(i.productName),
+      sku: sanitizeInput(i.sku),
+      notes: sanitizeInput(i.notes)
     }));
 
     if (!salesRepName) {
