@@ -4,8 +4,8 @@ import { LOCAL_STORAGE_KEYS } from '../constants';
 import { supabase } from './supabaseClient';
 import { generateId } from '../utils/calculations';
 
-// Helper to manage Device ID
-const getDeviceId = (): string => {
+// Exported for authService usage
+export const getDeviceId = (): string => {
   const KEY = 'dsr_device_id_v1';
   let id = localStorage.getItem(KEY);
   if (!id) {
@@ -15,11 +15,30 @@ const getDeviceId = (): string => {
   return id;
 };
 
+// Helper to get current authenticated user ID
+const getCurrentUserId = async (): Promise<string | null> => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id || null;
+};
+
 // Helper to map camelCase (App) to snake_case (DB)
-const mapToDb = (report: DailyReport) => {
+const mapToDb = async (report: DailyReport) => {
   const deviceId = getDeviceId();
-  // Filter out any existing device tags to avoid duplication, then add current device tag
-  const cleanSources = report.sources.filter(s => !s.startsWith('device:'));
+  const userId = await getCurrentUserId();
+  
+  // Clean existing tags to avoid duplication
+  const cleanSources = report.sources.filter(s => !s.startsWith('device:') && !s.startsWith('user:'));
+  
+  // Explicitly cast to string[] to allow adding internal tags
+  const finalSources: string[] = [...cleanSources];
+  
+  // Always add device ID for audit/tracking
+  finalSources.push(`device:${deviceId}`);
+  
+  // If user is logged in, add user ID (this becomes the primary isolation key)
+  if (userId) {
+    finalSources.push(`user:${userId}`);
+  }
   
   return {
     report_id: report.reportId,
@@ -30,8 +49,7 @@ const mapToDb = (report: DailyReport) => {
     sales_rep_name: report.salesRepName,
     items: report.items,
     totals: report.totals,
-    // Add device tag to isolate data
-    sources: [...cleanSources, `device:${deviceId}`],
+    sources: finalSources,
     attachments: report.attachments,
     share_message: report.shareMessage,
     created_at: report.createdAt
@@ -42,20 +60,19 @@ const mapToDb = (report: DailyReport) => {
 const mapFromDb = (row: any): DailyReport => {
   let rawSources: any[] = [];
   
-  // Robust handling: field might be returned as array OR string depending on DB driver/column type
   if (Array.isArray(row.sources)) {
     rawSources = row.sources;
   } else if (typeof row.sources === 'string') {
     try {
       const parsed = JSON.parse(row.sources);
       if (Array.isArray(parsed)) rawSources = parsed;
-    } catch (e) {
-      // If parsing fails, treat as empty or ignore
-    }
+    } catch (e) { }
   }
 
-  // Filter out device tags so they don't appear in UI
-  const cleanSources = rawSources.filter((s: string) => typeof s === 'string' && !s.startsWith('device:')) as SourceType[];
+  // Filter out internal isolation tags so they don't clutter UI
+  const cleanSources = rawSources.filter((s: string) => 
+    typeof s === 'string' && !s.startsWith('device:') && !s.startsWith('user:')
+  ) as SourceType[];
 
   return {
     reportId: row.report_id,
@@ -77,9 +94,9 @@ const mapFromDb = (row: any): DailyReport => {
 
 export const loadReports = async (): Promise<DailyReport[]> => {
   const deviceId = getDeviceId();
+  const userId = await getCurrentUserId();
   
-  // FIX: Fetch data without server-side .contains() to avoid "invalid input syntax for type json" errors.
-  // We filter the data in memory instead.
+  // Fetch recent reports
   const { data, error } = await supabase
     .from('daily_reports')
     .select('*')
@@ -93,9 +110,11 @@ export const loadReports = async (): Promise<DailyReport[]> => {
 
   if (!data) return [];
 
-  // Client-side Isolation Logic
+  // ISOLATION LOGIC:
+  // If User Logged In -> Show only reports with matching user:${userId}
+  // If Guest -> Show only reports with matching device:${deviceId}
+  
   return data.filter(row => {
-    // robust check for sources
     let sources: string[] = [];
     if (Array.isArray(row.sources)) {
       sources = row.sources;
@@ -103,8 +122,15 @@ export const loadReports = async (): Promise<DailyReport[]> => {
       try { sources = JSON.parse(row.sources); } catch {}
     }
     
-    // Only include rows that are tagged with this device ID
-    return Array.isArray(sources) && sources.includes(`device:${deviceId}`);
+    if (!Array.isArray(sources)) return false;
+
+    if (userId) {
+      // Authenticated Mode: Strict User Isolation
+      return sources.includes(`user:${userId}`);
+    } else {
+      // Guest Mode: Device Isolation
+      return sources.includes(`device:${deviceId}`);
+    }
   }).map(row => {
     try {
       return mapFromDb(row);
@@ -116,45 +142,32 @@ export const loadReports = async (): Promise<DailyReport[]> => {
 };
 
 export const saveReport = async (report: DailyReport): Promise<void> => {
-  // Security Check: URL/Content Validation
+  // Security Checks
   const dangerousPatterns = /javascript:|vbscript:|data:|file:/i;
-  
-  if (dangerousPatterns.test(report.shareMessage)) {
-    throw new Error("Security Error: Share message contains unsafe content.");
-  }
-  
-  if (report.items.some(i => i.notes && dangerousPatterns.test(i.notes))) {
-    throw new Error("Security Error: Item notes contain unsafe content.");
-  }
+  if (dangerousPatterns.test(report.shareMessage)) throw new Error("Security Error: Unsafe content.");
+  if (report.items.some(i => i.notes && dangerousPatterns.test(i.notes))) throw new Error("Security Error: Unsafe content.");
 
-  if (report.attachments.some(a => dangerousPatterns.test(a.url))) {
-    throw new Error("Security Error: Attachment contains unsafe URL.");
-  }
-
-  const payload = mapToDb(report);
+  const payload = await mapToDb(report); // Now async
+  
   const jsonSize = JSON.stringify(payload).length;
-  if (jsonSize > 1000000) { 
-    throw new Error("Report is too large to save (exceeds 1MB). Please remove some items or notes.");
-  }
+  if (jsonSize > 1000000) throw new Error("Report too large (max 1MB).");
 
   const { error } = await supabase
     .from('daily_reports')
     .upsert(payload);
 
   if (error) {
-    console.error('Error saving report:', error.message, error.details || '');
+    console.error('Error saving report:', error.message);
     throw new Error(`Database Error: ${error.message}`);
   }
 };
 
 export const clearAllReports = async (): Promise<void> => {
-  // 1. Get IDs of reports belonging to this device (reusing safe loadReports logic)
   const reports = await loadReports();
   const ids = reports.map(r => r.reportId);
 
   if (ids.length === 0) return;
 
-  // 2. Delete by ID
   const { error } = await supabase
     .from('daily_reports')
     .delete()
@@ -168,17 +181,12 @@ export const clearAllReports = async (): Promise<void> => {
 
 export const deleteReports = async (ids: string[]): Promise<void> => {
   if (ids.length === 0) return;
-  
-  // Just delete by ID (ownership implicitly checked because user can only select what they see)
   const { error } = await supabase
     .from('daily_reports')
     .delete()
     .in('report_id', ids);
 
-  if (error) {
-    console.error('Error deleting reports:', error.message);
-    throw new Error(`Database Error: ${error.message}`);
-  }
+  if (error) throw new Error(`Database Error: ${error.message}`);
 };
 
 export const getReportById = async (id: string): Promise<DailyReport | undefined> => {
@@ -188,13 +196,7 @@ export const getReportById = async (id: string): Promise<DailyReport | undefined
     .eq('report_id', id)
     .single();
 
-  if (error) {
-    console.error('Error fetching report by ID:', error.message);
-    return undefined;
-  }
-  
-  if (!data) return undefined;
-
+  if (error || !data) return undefined;
   return mapFromDb(data);
 };
 
@@ -202,25 +204,12 @@ export const uploadFile = async (file: File): Promise<string | null> => {
   try {
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}_${generateId()}.${fileExt}`;
-    
-    const { data, error } = await supabase.storage
-      .from('uploads')
-      .upload(fileName, file);
-
-    if (error) {
-      console.warn('Upload failed (check if bucket "uploads" exists):', error.message);
-      return null;
-    }
-
+    const { data, error } = await supabase.storage.from('uploads').upload(fileName, file);
+    if (error) return null;
     if (!data?.path) return null;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('uploads')
-      .getPublicUrl(data.path);
-
+    const { data: { publicUrl } } = supabase.storage.from('uploads').getPublicUrl(data.path);
     return publicUrl;
   } catch (e) {
-    console.error('Upload error:', e);
     return null;
   }
 };
@@ -228,14 +217,8 @@ export const uploadFile = async (file: File): Promise<string | null> => {
 export const saveOcrLog = async (imageUrl: string, analysis: SalesItem[]): Promise<void> => {
   const { error } = await supabase
     .from('reports')
-    .insert({
-      image_url: imageUrl,
-      analysis: JSON.stringify(analysis)
-    });
-
-  if (error) {
-    console.warn('Error logging OCR analysis to reports table:', error.message);
-  }
+    .insert({ image_url: imageUrl, analysis: JSON.stringify(analysis) });
+  if (error) console.warn('Error logging OCR:', error.message);
 };
 
 export const saveConfig = (config: AppConfig) => {

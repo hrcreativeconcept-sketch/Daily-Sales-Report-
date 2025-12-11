@@ -1,11 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check } from 'lucide-react';
+import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check, User, UserCircle } from 'lucide-react';
 import { DailyReport } from '../types';
 import * as StorageService from '../services/storageService';
+import * as AuthService from '../services/authService';
 import { formatCurrency } from '../utils/calculations';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import AuthModal from '../components/AuthModal';
 
 type ViewMode = 'home' | 'history';
 
@@ -15,6 +17,10 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   
+  // Auth State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
   // Selection Mode State
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -29,16 +35,26 @@ const Dashboard: React.FC = () => {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPress = useRef(false);
 
-  const fetchReports = async () => {
+  const initData = async () => {
     setLoading(true);
+    // 1. Check Auth
+    const user = await AuthService.getCurrentUser();
+    setCurrentUser(user);
+    
+    // 2. Load Reports (storageService now handles isolation based on auth state)
     const data = await StorageService.loadReports();
     setReports(data);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchReports();
+    initData();
   }, []);
+
+  const handleAuthSuccess = async () => {
+    // Reload everything after auth state change
+    await initData();
+  };
 
   // --- Selection Logic ---
 
@@ -58,8 +74,6 @@ const Dashboard: React.FC = () => {
     const newSelected = new Set(selectedIds);
     if (newSelected.has(id)) {
       newSelected.delete(id);
-      // Optional: If last item deselected, exit selection mode? 
-      // providing a smoother UX, let's keep mode active until explicit Cancel.
     } else {
       newSelected.add(id);
     }
@@ -67,14 +81,14 @@ const Dashboard: React.FC = () => {
   };
 
   const deleteSelectedReports = async (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent ghost clicks
+    e.preventDefault(); 
     if (selectedIds.size === 0) return;
 
-    // Immediate delete without confirm dialog (Undo pattern preferred for mobile)
     setLoading(true);
     try {
       await StorageService.deleteReports(Array.from(selectedIds));
-      await fetchReports(); // Reload from DB
+      const data = await StorageService.loadReports();
+      setReports(data);
       exitSelectionMode();
     } catch (e) {
       alert("Failed to delete selected reports.");
@@ -85,14 +99,13 @@ const Dashboard: React.FC = () => {
 
   // --- Long Press Handlers ---
   const handleTouchStart = (id: string) => {
-    if (isSelectionMode) return; // No long press needed if already in mode
+    if (isSelectionMode) return;
     isLongPress.current = false;
     longPressTimer.current = setTimeout(() => {
       isLongPress.current = true;
       enterSelectionMode(id);
-      // Vibrate if supported
       if (navigator.vibrate) navigator.vibrate(50);
-    }, 600); // 600ms hold to trigger
+    }, 600);
   };
 
   const handleTouchEnd = () => {
@@ -102,7 +115,6 @@ const Dashboard: React.FC = () => {
   };
 
   const handleTouchMove = () => {
-    // If user scrolls, cancel long press
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
     }
@@ -111,7 +123,7 @@ const Dashboard: React.FC = () => {
   const handleCardClick = (id: string) => {
     if (isLongPress.current) {
       isLongPress.current = false;
-      return; // Already handled by timer
+      return;
     }
 
     if (isSelectionMode) {
@@ -149,9 +161,15 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50/50 pb-32 font-sans">
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+        user={currentUser}
+        onAuthSuccess={handleAuthSuccess}
+      />
+
       {/* Header Area */}
       <header className={`bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl transition-all duration-300 relative overflow-hidden ${viewMode === 'history' ? 'pb-8' : ''}`}>
-        {/* Abstract Background Pattern */}
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-10 pointer-events-none">
            <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl"></div>
            <div className="absolute bottom-0 left-0 w-60 h-60 bg-brand-300 rounded-full blur-3xl"></div>
@@ -166,7 +184,18 @@ const Dashboard: React.FC = () => {
                   {viewMode === 'home' ? 'Overview & Insights' : 'Archive & Search'}
                 </p>
             </div>
+            
+            {/* Action Buttons Top Right */}
             <div className="flex gap-2">
+              {/* User / Auth Button */}
+              <button 
+                onClick={() => setIsAuthModalOpen(true)}
+                className={`p-2 rounded-full transition-all active:scale-95 shadow-sm border ${currentUser ? 'bg-brand-500 border-brand-400 text-white' : 'bg-white/20 backdrop-blur-md border-white/30 text-white hover:bg-white/30'}`}
+                title={currentUser ? "Account" : "Sign In"}
+              >
+                 {currentUser ? <UserCircle size={24} /> : <User size={22} />}
+              </button>
+
               {viewMode === 'history' && (
                 <button 
                   type="button"
@@ -175,11 +204,6 @@ const Dashboard: React.FC = () => {
                 >
                   <CheckSquare size={14} strokeWidth={2.5} /> {isSelectionMode ? 'Done' : 'Select'}
                 </button>
-              )}
-              {viewMode === 'history' && hasFilters && !isSelectionMode && (
-                  <button type="button" onClick={resetFilters} className="text-xs bg-brand-800 hover:bg-brand-900 px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors shadow-sm active:scale-95">
-                      <RefreshCw size={12} />
-                  </button>
               )}
             </div>
         </div>
@@ -204,6 +228,11 @@ const Dashboard: React.FC = () => {
             >
               <Filter size={20} />
             </button>
+            {hasFilters && (
+                <button type="button" onClick={resetFilters} className="p-3.5 bg-brand-800 hover:bg-brand-900 rounded-2xl flex items-center justify-center transition-colors shadow-sm active:scale-95">
+                    <RefreshCw size={20} className="text-white"/>
+                </button>
+            )}
           </div>
         )}
 
@@ -284,7 +313,6 @@ const Dashboard: React.FC = () => {
                       onClick={() => navigate(`/report/${mostRecentReport.reportId}`)}
                       className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xl shadow-brand-900/5 active:scale-[0.98] transition-all cursor-pointer group relative overflow-hidden"
                     >
-                      {/* Decorative Background */}
                       <div className="absolute top-0 right-0 w-32 h-32 bg-brand-50/50 rounded-full -mr-10 -mt-10 blur-2xl group-hover:bg-brand-100/50 transition-colors"></div>
                       
                       <div className="relative z-10">
@@ -312,7 +340,7 @@ const Dashboard: React.FC = () => {
                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
                           <FileText className="text-gray-300" size={24} />
                        </div>
-                       <p className="text-gray-500 font-medium">No reports created yet.</p>
+                       <p className="text-gray-500 font-medium">{currentUser ? "No reports in your account." : "No reports on this device."}</p>
                        <p className="text-gray-400 text-sm mt-1">Tap + to start your first report.</p>
                     </div>
                  )}
@@ -334,7 +362,7 @@ const Dashboard: React.FC = () => {
                        <FileText size={32} className="text-gray-300" />
                     </div>
                     <p className="text-sm font-medium text-gray-600">
-                        {hasFilters ? 'No reports match your filters.' : 'No reports yet.'}
+                        {hasFilters ? 'No reports match your filters.' : 'No reports found.'}
                     </p>
                   </div>
                 ) : (
@@ -343,21 +371,18 @@ const Dashboard: React.FC = () => {
                     return (
                       <div 
                         key={report.reportId}
-                        // Touch Events for Long Press
                         onTouchStart={() => handleTouchStart(report.reportId)}
                         onTouchEnd={handleTouchEnd}
                         onTouchMove={handleTouchMove}
-                        // Mouse/Click Events
                         onClick={() => handleCardClick(report.reportId)}
                         className={`bg-white p-4 rounded-2xl border shadow-sm transition-all cursor-pointer flex justify-between items-center group relative overflow-hidden select-none ${
                           isSelectionMode 
                              ? isSelected 
                                 ? 'border-brand-500 ring-1 ring-brand-500 bg-brand-50/30' 
-                                : 'border-gray-100 opacity-100' // Keep full opacity to make selection easier
+                                : 'border-gray-100 opacity-100'
                              : 'border-gray-100 hover:border-brand-200 hover:shadow-md active:scale-[0.98]'
                         }`}
                       >
-                        {/* Selection Checkbox */}
                         {isSelectionMode && (
                           <div className={`mr-4 w-6 h-6 min-w-[1.5rem] rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? 'bg-brand-500 border-brand-500 scale-110' : 'bg-white border-gray-300'}`}>
                             {isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
@@ -395,7 +420,6 @@ const Dashboard: React.FC = () => {
       {/* Floating Bottom Action Bar */}
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-50">
         
-        {/* SELECTION MODE ACTIONS */}
         {isSelectionMode ? (
            <div className="flex gap-3 animate-in slide-in-from-bottom-6 duration-300">
               <button 
@@ -416,12 +440,8 @@ const Dashboard: React.FC = () => {
               </button>
            </div>
         ) : (
-          /* NORMAL MODE ACTIONS */
           <div className="bg-white/80 backdrop-blur-xl border border-white/40 p-2 rounded-[2rem] shadow-2xl shadow-gray-200/50 flex items-center justify-between pl-3 pr-2 gap-4 ring-1 ring-gray-200/50">
-            
-            {/* View Toggle */}
             <div className="flex bg-gray-100/80 p-1 rounded-full relative">
-               {/* Sliding Pill */}
                <div 
                  className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full shadow-sm transition-all duration-300 ease-out ${viewMode === 'home' ? 'left-1' : 'left-[calc(50%+2px)]'}`}
                ></div>
@@ -442,7 +462,6 @@ const Dashboard: React.FC = () => {
                </button>
             </div>
 
-            {/* Create Button */}
             <button 
               type="button"
               onClick={() => navigate('/new')}
@@ -454,7 +473,6 @@ const Dashboard: React.FC = () => {
           </div>
         )}
       </div>
-
     </div>
   );
 };
