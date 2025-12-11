@@ -42,7 +42,7 @@ const mapToDb = async (report: DailyReport) => {
   
   return {
     report_id: report.reportId,
-    user_id: userId, // Restored: Required for Row Level Security (RLS) policies
+    // user_id removed: Column does not exist in DB. Ownership is tracked via 'sources' array.
     date_local: report.dateLocal,
     time_local: report.timeLocal,
     timezone: report.timezone,
@@ -53,7 +53,8 @@ const mapToDb = async (report: DailyReport) => {
     sources: finalSources,
     attachments: report.attachments,
     share_message: report.shareMessage,
-    created_at: report.createdAt
+    // Convert JS timestamp (ms) to PostgreSQL ISO string for timestamptz compatibility
+    created_at: new Date(report.createdAt).toISOString()
   };
 };
 
@@ -89,7 +90,7 @@ const mapFromDb = (row: any): DailyReport => {
     shareMessage: row.share_message || '',
     createdAt: (typeof row.created_at === 'string' && row.created_at.includes('T'))
       ? new Date(row.created_at).getTime()
-      : parseInt(String(row.created_at || '0'), 10)
+      : parseInt(String(row.created_at || '0'), 10) || Date.now()
   };
 };
 
@@ -158,12 +159,11 @@ export const saveReport = async (report: DailyReport): Promise<void> => {
     .upsert(payload);
 
   if (error) {
-    // Check specifically for the schema cache error and retry or warn
-    if (error.message.includes('Could not find the \'user_id\' column')) {
-       console.error("Schema Cache Error: The database might be updating. Please try again in a moment.");
-       throw new Error("Database Sync Error: Please try again.");
-    }
     console.error('Error saving report:', error.message);
+    // Handle Row Level Security errors gracefully
+    if (error.message.includes('row-level security') || error.message.includes('policy')) {
+       throw new Error("Access Denied: You may need to sign in or you do not have permission to save this report.");
+    }
     throw new Error(`Database Error: ${error.message}`);
   }
 };

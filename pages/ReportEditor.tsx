@@ -267,8 +267,9 @@ const ReportEditor: React.FC = () => {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
       return true;
-    } catch (e) {
-      alert("Failed to save report. Please check your connection.");
+    } catch (e: any) {
+      // Improved Error Handling: Show specific message from service
+      alert(e.message || "Failed to save report. Please check your connection.");
       return false;
     } finally {
       setSaving(false);
@@ -329,9 +330,9 @@ const ReportEditor: React.FC = () => {
       // 4. Update State to Show Success View (Don't navigate)
       setCreatedSplitReports({ a: reportA, b: reportB });
       
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Failed to split and save reports.");
+      alert(`Failed to split and save reports: ${e.message}`);
     } finally {
       setSaving(false);
     }

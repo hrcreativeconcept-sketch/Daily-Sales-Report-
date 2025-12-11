@@ -81,7 +81,7 @@ export const migrateGuestDataToUser = async (userId: string) => {
         const newSources = [...sources, `user:${userId}`];
         updates.push({
             ...row,
-            user_id: userId, // Restored for data ownership
+            // user_id removed from payload as column does not exist
             sources: newSources
         });
     }
