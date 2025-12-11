@@ -116,11 +116,21 @@ export const generateId = () => {
 export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[], SalesItem[]] => {
   // 1. Flatten all items into single units to allow granular splitting
   const units: { item: SalesItem; price: number }[] = [];
-  items.forEach(item => {
-    for (let i = 0; i < item.quantity; i++) {
+  let totalUnits = 0;
+  
+  // Safety cap to prevent browser hang on massive quantities
+  const MAX_UNITS = 2000;
+
+  for (const item of items) {
+    if (totalUnits >= MAX_UNITS) break;
+    // Don't flatten huge quantities completely if we are already near limit
+    const qtyToFlatten = Math.min(item.quantity, MAX_UNITS - totalUnits);
+    
+    for (let i = 0; i < qtyToFlatten; i++) {
       units.push({ item: { ...item, quantity: 1 }, price: item.unitPrice });
+      totalUnits++;
     }
-  });
+  }
 
   // 2. Sort units by price descending (Greedy strategy works best with largest items first)
   units.sort((a, b) => b.price - a.price);

@@ -42,7 +42,7 @@ const mapToDb = async (report: DailyReport) => {
   
   return {
     report_id: report.reportId,
-    user_id: userId,
+    // user_id column removed as it does not exist in the schema
     date_local: report.dateLocal,
     time_local: report.timeLocal,
     timezone: report.timezone,

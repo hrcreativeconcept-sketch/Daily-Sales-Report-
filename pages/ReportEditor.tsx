@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2, Save, Users, X, Split, Percent, Copy, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2, Save, Users, X, Split, Percent, Copy, MessageCircle, ArrowRightLeft, ArrowRight, ArrowLeft as ArrowLeftIcon, Plus, Minus } from 'lucide-react';
 import { DailyReport, SalesItem, SourceType } from '../types';
 import * as StorageService from '../services/storageService';
 import * as CalculationUtils from '../utils/calculations';
@@ -36,10 +36,10 @@ const ReportEditor: React.FC = () => {
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [splitRatio, setSplitRatio] = useState<0.5 | 0.6 | 0.7>(0.5);
   const [staff2Name, setStaff2Name] = useState('');
-  const [splitPreview, setSplitPreview] = useState<{
-    itemsA: SalesItem[], totalA: number,
-    itemsB: SalesItem[], totalB: number
-  } | null>(null);
+  
+  // Advanced Split State
+  const [splitItemsA, setSplitItemsA] = useState<SalesItem[]>([]);
+  const [splitItemsB, setSplitItemsB] = useState<SalesItem[]>([]);
   
   // New State for Success View
   const [createdSplitReports, setCreatedSplitReports] = useState<{a: DailyReport, b: DailyReport} | null>(null);
@@ -105,15 +105,50 @@ const ReportEditor: React.FC = () => {
     setIsDirty(true);
   }, [report, setReport]);
 
-  // Update Split Preview when modal opens or params change
+  // Calculate Initial Split when modal opens or ratio changes
   useEffect(() => {
     if (isSplitModalOpen && report && !createdSplitReports) {
       const [itemsA, itemsB] = CalculationUtils.splitSalesItems(report.items, splitRatio);
-      const totalA = itemsA.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
-      const totalB = itemsB.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
-      setSplitPreview({ itemsA, totalA, itemsB, totalB });
+      setSplitItemsA(itemsA);
+      setSplitItemsB(itemsB);
     }
   }, [isSplitModalOpen, splitRatio, report, createdSplitReports]);
+
+  // Manual Move Logic
+  const moveOneUnit = (fromList: SalesItem[], toList: SalesItem[], index: number, setFrom: any, setTo: any) => {
+    const itemToMove = fromList[index];
+    if (!itemToMove) return;
+
+    // 1. Remove 1 unit from source
+    const newFrom = [...fromList];
+    if (itemToMove.quantity > 1) {
+        newFrom[index] = { ...itemToMove, quantity: itemToMove.quantity - 1 };
+    } else {
+        newFrom.splice(index, 1);
+    }
+
+    // 2. Add 1 unit to destination
+    const newTo = [...toList];
+    const existingIndex = newTo.findIndex(i => 
+        i.productName === itemToMove.productName && 
+        i.unitPrice === itemToMove.unitPrice && 
+        i.sku === itemToMove.sku &&
+        i.notes === itemToMove.notes
+    );
+
+    if (existingIndex >= 0) {
+        newTo[existingIndex] = { ...newTo[existingIndex], quantity: newTo[existingIndex].quantity + 1 };
+    } else {
+        newTo.push({ ...itemToMove, quantity: 1 });
+    }
+
+    // Update state
+    setFrom(newFrom);
+    setTo(newTo);
+  };
+
+  // Helper to calculate totals for the split view
+  const getTotal = (items: SalesItem[]) => items.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
 
   // Timezone & Date Consistency Check
   useEffect(() => {
@@ -254,7 +289,7 @@ const ReportEditor: React.FC = () => {
   };
 
   const handleSplitAndSave = async () => {
-    if (!report || !splitPreview) return;
+    if (!report) return;
     if (!staff2Name.trim()) {
       alert("Please enter a name for the second staff member.");
       return;
@@ -266,8 +301,8 @@ const ReportEditor: React.FC = () => {
       const reportA: DailyReport = {
         ...report,
         reportId: CalculationUtils.generateId(), // New ID
-        items: splitPreview.itemsA,
-        totals: CalculationUtils.computeTotals(splitPreview.itemsA, 0), // Assuming no discounts split for now
+        items: splitItemsA,
+        totals: CalculationUtils.computeTotals(splitItemsA, 0), // Assuming no discounts split for now
         salesRepName: report.salesRepName,
         createdAt: Date.now()
       };
@@ -277,8 +312,8 @@ const ReportEditor: React.FC = () => {
       const reportB: DailyReport = {
         ...report,
         reportId: CalculationUtils.generateId(), // New ID
-        items: splitPreview.itemsB,
-        totals: CalculationUtils.computeTotals(splitPreview.itemsB, 0),
+        items: splitItemsB,
+        totals: CalculationUtils.computeTotals(splitItemsB, 0),
         salesRepName: staff2Name,
         createdAt: Date.now() + 1 // Ensure distinct timestamps
       };
@@ -341,7 +376,7 @@ const ReportEditor: React.FC = () => {
       {isSplitModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsSplitModalOpen(false)}></div>
-          <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+          <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 flex flex-col max-h-[95vh]">
             
             <div className="bg-brand-600 p-4 text-white flex justify-between items-center shrink-0">
                <h2 className="text-lg font-bold flex items-center gap-2">
@@ -353,19 +388,21 @@ const ReportEditor: React.FC = () => {
                </button>
             </div>
 
-            <div className="p-5 overflow-y-auto">
+            <div className="p-5 overflow-y-auto flex-1 bg-gray-50/50">
               {!createdSplitReports ? (
                 <>
                   {/* CONFIGURATION MODE */}
                   {/* Ratio Selector */}
-                  <div className="mb-6">
-                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Split Ratio</label>
+                  <div className="mb-6 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                    <label className="text-xs font-bold text-gray-500 uppercase mb-2 block flex items-center gap-2">
+                       <Split size={14} /> Auto-Split Ratio
+                    </label>
                     <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1 rounded-xl">
                         {[0.5, 0.6, 0.7].map((r) => (
                           <button
                             key={r}
                             onClick={() => setSplitRatio(r as any)}
-                            className={`py-2 rounded-lg text-sm font-bold transition-all ${splitRatio === r ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                            className={`py-2 rounded-lg text-sm font-bold transition-all ${splitRatio === r ? 'bg-white text-brand-700 shadow-sm ring-1 ring-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
                           >
                             {r * 100} / {100 - (r * 100)}
                           </button>
@@ -374,55 +411,88 @@ const ReportEditor: React.FC = () => {
                   </div>
 
                   {/* Staff Names */}
-                  <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="text-xs font-bold text-brand-600 uppercase mb-1 block">Staff A ({splitRatio * 100}%)</label>
+                      <label className="text-xs font-bold text-brand-600 uppercase mb-1 block">Staff A (You)</label>
                       <input 
                           type="text" 
                           value={report.salesRepName} 
                           onChange={(e) => updateReport({ salesRepName: e.target.value })}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                          className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
                           placeholder="Name 1"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Staff B ({Math.round((1 - splitRatio) * 100)}%)</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Staff B</label>
                       <input 
                           type="text" 
                           value={staff2Name} 
                           onChange={(e) => setStaff2Name(e.target.value)}
-                          className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-sm font-semibold focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
-                          placeholder="Name 2"
+                          className="w-full bg-white border border-brand-300 rounded-xl px-3 py-2 text-sm font-semibold focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none"
+                          placeholder="Enter Name 2"
                           autoFocus
                       />
                     </div>
                   </div>
 
-                  {/* Preview */}
-                  {splitPreview && (
-                    <div className="space-y-3 mb-6">
-                      <div className="bg-brand-50 p-3 rounded-xl border border-brand-100 flex justify-between items-center">
-                          <div>
-                            <span className="text-xs font-bold text-brand-800 uppercase block">{report.salesRepName || 'Staff A'}</span>
-                            <span className="text-[10px] text-brand-600">{splitPreview.itemsA.length} items</span>
-                          </div>
-                          <span className="text-lg font-extrabold text-brand-700">{CalculationUtils.formatCurrency(splitPreview.totalA)}</span>
+                  {/* Detailed Item List */}
+                  <div className="flex flex-col sm:flex-row gap-3 h-full min-h-[300px]">
+                      {/* Left Column (A) */}
+                      <div className="flex-1 bg-brand-50/50 border border-brand-100 rounded-xl overflow-hidden flex flex-col">
+                         <div className="p-3 bg-brand-50 border-b border-brand-100 flex justify-between items-center">
+                            <span className="font-bold text-brand-900 text-xs">Staff A</span>
+                            <span className="font-extrabold text-brand-700 text-sm">{CalculationUtils.formatCurrency(getTotal(splitItemsA))}</span>
+                         </div>
+                         <div className="flex-1 overflow-y-auto p-2 space-y-2 max-h-[250px] sm:max-h-[350px]">
+                            {splitItemsA.length === 0 && <div className="text-center p-4 text-xs text-brand-300 font-medium italic">No items</div>}
+                            {splitItemsA.map((item, i) => (
+                                <div key={i} 
+                                   onClick={() => moveOneUnit(splitItemsA, splitItemsB, i, setSplitItemsA, setSplitItemsB)}
+                                   className="bg-white p-2 rounded-lg border border-brand-100 shadow-sm cursor-pointer hover:bg-brand-50 active:scale-95 transition-all flex justify-between items-center group"
+                                >
+                                   <div className="flex items-center gap-2 overflow-hidden">
+                                     <span className="bg-brand-100 text-brand-700 text-[10px] font-bold px-1.5 py-0.5 rounded min-w-[20px] text-center">{item.quantity}</span>
+                                     <span className="text-xs font-medium text-gray-700 truncate">{item.productName}</span>
+                                   </div>
+                                   <ArrowRight size={14} className="text-brand-300 group-hover:text-brand-500" />
+                                </div>
+                            ))}
+                         </div>
                       </div>
-                      <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex justify-between items-center">
-                          <div>
-                            <span className="text-xs font-bold text-gray-600 uppercase block">{staff2Name || 'Staff B'}</span>
-                            <span className="text-[10px] text-gray-500">{splitPreview.itemsB.length} items</span>
-                          </div>
-                          <span className="text-lg font-bold text-gray-700">{CalculationUtils.formatCurrency(splitPreview.totalB)}</span>
-                      </div>
-                    </div>
-                  )}
 
-                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-800 mb-2">
-                    <p className="flex gap-2">
-                      <AlertTriangle size={14} className="shrink-0" />
-                      <span>This will create <strong>two separate reports</strong>. The current report will be saved as Staff A's copy.</span>
-                    </p>
+                      {/* Divider */}
+                      <div className="flex items-center justify-center text-gray-300">
+                        <ArrowRightLeft className="rotate-90 sm:rotate-0" size={20} />
+                      </div>
+
+                      {/* Right Column (B) */}
+                      <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex flex-col">
+                         <div className="p-3 bg-gray-100 border-b border-gray-200 flex justify-between items-center">
+                            <span className="font-bold text-gray-600 text-xs">Staff B</span>
+                            <span className="font-extrabold text-gray-700 text-sm">{CalculationUtils.formatCurrency(getTotal(splitItemsB))}</span>
+                         </div>
+                         <div className="flex-1 overflow-y-auto p-2 space-y-2 max-h-[250px] sm:max-h-[350px]">
+                            {splitItemsB.length === 0 && <div className="text-center p-4 text-xs text-gray-300 font-medium italic">No items</div>}
+                            {splitItemsB.map((item, i) => (
+                                <div key={i} 
+                                   onClick={() => moveOneUnit(splitItemsB, splitItemsA, i, setSplitItemsB, setSplitItemsA)}
+                                   className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm cursor-pointer hover:bg-gray-50 active:scale-95 transition-all flex justify-between items-center group"
+                                >
+                                   <ArrowLeftIcon size={14} className="text-gray-300 group-hover:text-gray-500 order-first mr-2" />
+                                   <div className="flex items-center gap-2 overflow-hidden flex-1">
+                                     <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-1.5 py-0.5 rounded min-w-[20px] text-center">{item.quantity}</span>
+                                     <span className="text-xs font-medium text-gray-700 truncate">{item.productName}</span>
+                                   </div>
+                                </div>
+                            ))}
+                         </div>
+                      </div>
+                  </div>
+
+                  <div className="mt-3 text-center">
+                     <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                       Tip: Tap an item to move 1 unit to the other list
+                     </span>
                   </div>
                 </>
               ) : (
