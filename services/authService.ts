@@ -81,7 +81,7 @@ export const migrateGuestDataToUser = async (userId: string) => {
         const newSources = [...sources, `user:${userId}`];
         updates.push({
             ...row,
-            user_id: userId, // CRITICAL: Assign ownership for RLS
+            user_id: userId,
             sources: newSources
         });
     }
