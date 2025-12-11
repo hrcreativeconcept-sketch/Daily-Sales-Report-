@@ -1,15 +1,19 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check, User, UserCircle } from 'lucide-react';
+import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check, User, UserCircle, Coffee, Settings } from 'lucide-react';
 import { DailyReport } from '../types';
 import * as StorageService from '../services/storageService';
 import * as AuthService from '../services/authService';
 import { formatCurrency } from '../utils/calculations';
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import AuthModal from '../components/AuthModal';
+import SettingsModal from '../components/SettingsModal';
 
 type ViewMode = 'home' | 'history';
+
+// Module-level variables to handle touch interactions safely without Hooks
+let longPressTimer: any = null;
+let isLongPressEvent = false;
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -20,6 +24,7 @@ const Dashboard: React.FC = () => {
   // Auth State
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Selection Mode State
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -31,17 +36,13 @@ const Dashboard: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Long Press Refs
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLongPress = useRef(false);
-
   const initData = async () => {
     setLoading(true);
     // 1. Check Auth
     const user = await AuthService.getCurrentUser();
     setCurrentUser(user);
     
-    // 2. Load Reports (storageService now handles isolation based on auth state)
+    // 2. Load Reports
     const data = await StorageService.loadReports();
     setReports(data);
     setLoading(false);
@@ -49,11 +50,47 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     initData();
+    
+    // Reminder Check Logic
+    const checkReminder = () => {
+      const config = StorageService.loadConfig();
+      if (!config.enableReminders || !config.reminderTime) return;
+      
+      const now = new Date();
+      const [hours, minutes] = config.reminderTime.split(':').map(Number);
+      
+      if (now.getHours() === hours && now.getMinutes() === minutes) {
+         // Check if already notified today
+         const lastDate = localStorage.getItem('dsr_last_reminder_date');
+         const today = new Date().toDateString();
+         
+         if (lastDate !== today) {
+           if ('Notification' in window && Notification.permission === 'granted') {
+             new Notification("Daily Sales Reminder", { 
+               body: "Time to post your daily sales report!",
+               icon: '/vite.svg' // Fallback icon
+             });
+             localStorage.setItem('dsr_last_reminder_date', today);
+           }
+         }
+      }
+    };
+
+    // Check every minute
+    const interval = setInterval(checkReminder, 60000);
+    // Initial check
+    checkReminder();
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleAuthSuccess = async () => {
-    // Reload everything after auth state change
     await initData();
+  };
+  
+  const handleConfigChange = () => {
+    // Reload logic if needed, but config is mostly for ReportEditor.
+    // Dashboard handles the loop internally via loadConfig() call inside interval.
   };
 
   // --- Selection Logic ---
@@ -100,32 +137,34 @@ const Dashboard: React.FC = () => {
   // --- Long Press Handlers ---
   const handleTouchStart = (id: string) => {
     if (isSelectionMode) return;
-    isLongPress.current = false;
-    longPressTimer.current = setTimeout(() => {
-      isLongPress.current = true;
+    isLongPressEvent = false;
+    if (longPressTimer) clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(() => {
+      isLongPressEvent = true;
       enterSelectionMode(id);
       if (navigator.vibrate) navigator.vibrate(50);
     }, 600);
   };
 
   const handleTouchEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
     }
   };
 
   const handleTouchMove = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
     }
   };
 
   const handleCardClick = (id: string) => {
-    if (isLongPress.current) {
-      isLongPress.current = false;
+    if (isLongPressEvent) {
+      isLongPressEvent = false;
       return;
     }
-
     if (isSelectionMode) {
       toggleReportSelection(id);
     } else {
@@ -134,7 +173,6 @@ const Dashboard: React.FC = () => {
   };
 
   // --- Filtering ---
-
   const filteredReports = reports.filter(r => {
     const matchesSearch = !searchTerm || r.storeName.toLowerCase().includes(searchTerm.toLowerCase());
     const reportDate = r.dateLocal;
@@ -144,11 +182,11 @@ const Dashboard: React.FC = () => {
   }).sort((a, b) => b.dateLocal.localeCompare(a.dateLocal) || b.createdAt - a.createdAt);
 
   const mostRecentReport = [...reports].sort((a, b) => b.createdAt - a.createdAt)[0];
+  
+  // Custom Chart Logic
   const sortedForChart = [...reports].sort((a, b) => a.dateLocal.localeCompare(b.dateLocal));
-  const chartData = sortedForChart.slice(-7).map(r => ({
-    name: r.dateLocal.slice(5),
-    net: r.totals.net
-  }));
+  const last7Days = sortedForChart.slice(-7);
+  const maxVal = Math.max(...last7Days.map(r => r.totals.net), 1);
 
   const resetFilters = () => {
     setSearchTerm('');
@@ -168,11 +206,19 @@ const Dashboard: React.FC = () => {
         onAuthSuccess={handleAuthSuccess}
       />
 
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onConfigChange={handleConfigChange}
+        user={currentUser}
+      />
+
       {/* Header Area */}
       <header className={`bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl transition-all duration-300 relative overflow-hidden ${viewMode === 'history' ? 'pb-8' : ''}`}>
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-10 pointer-events-none">
-           <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl"></div>
-           <div className="absolute bottom-0 left-0 w-60 h-60 bg-brand-300 rounded-full blur-3xl"></div>
+           <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl opacity-20"></div>
+           <div className="absolute bottom-0 left-0 w-60 h-60 bg-brand-300 rounded-full blur-3xl opacity-20"></div>
+           <div className="absolute top-1/2 left-1/2 w-full h-32 bg-brand-400 blur-3xl opacity-10 -translate-x-1/2 -translate-y-1/2 rotate-12"></div>
         </div>
 
         <div className="relative z-10 flex justify-between items-start">
@@ -185,12 +231,19 @@ const Dashboard: React.FC = () => {
                 </p>
             </div>
             
-            {/* Action Buttons Top Right */}
             <div className="flex gap-2">
-              {/* User / Auth Button */}
+              {/* Settings Button */}
+               <button 
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-2 rounded-full transition-all active:scale-95 shadow-sm border bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
+                title="Settings"
+              >
+                 <Settings size={22} />
+              </button>
+
               <button 
                 onClick={() => setIsAuthModalOpen(true)}
-                className={`p-2 rounded-full transition-all active:scale-95 shadow-sm border ${currentUser ? 'bg-brand-500 border-brand-400 text-white' : 'bg-white/20 backdrop-blur-md border-white/30 text-white hover:bg-white/30'}`}
+                className={`p-2 rounded-full transition-all active:scale-95 shadow-sm border ${currentUser ? 'bg-white text-brand-700 border-white' : 'bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20'}`}
                 title={currentUser ? "Account" : "Sign In"}
               >
                  {currentUser ? <UserCircle size={24} /> : <User size={22} />}
@@ -208,7 +261,6 @@ const Dashboard: React.FC = () => {
             </div>
         </div>
         
-        {/* Search Bar - Only in History Mode */}
         {viewMode === 'history' && !isSelectionMode && (
           <div className="mt-8 flex gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="relative flex-1 group">
@@ -236,7 +288,6 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Filters Panel */}
         {viewMode === 'history' && showFilters && !isSelectionMode && (
             <div className="mt-4 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
                 <div className="space-y-1">
@@ -269,38 +320,44 @@ const Dashboard: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* Chart Card */}
-            {viewMode === 'home' && chartData.length > 0 && (
+            {/* Custom Chart Card */}
+            {viewMode === 'home' && last7Days.length > 0 && (
               <div className="bg-white p-5 rounded-2xl shadow-lg shadow-gray-200/50 border border-gray-100 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex items-center justify-between mb-6">
                    <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2 tracking-wider">
-                     <div className="p-1 bg-brand-50 rounded-md"><TrendingUp size={14} className="text-brand-600" /></div>
-                     Trend
+                     <div className="p-1.5 bg-brand-50 rounded-lg"><TrendingUp size={16} className="text-brand-600" /></div>
+                     Sales Trend
                    </h3>
-                   <span className="text-[10px] text-brand-600 font-bold bg-brand-50 px-2.5 py-1 rounded-full border border-brand-100">Last 7 Days</span>
+                   <span className="text-[10px] text-brand-600 font-bold bg-brand-50 px-3 py-1.5 rounded-full border border-brand-100">Last 7 Days</span>
                 </div>
-                <div className="h-32 w-full">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <BarChart data={chartData}>
-                      <XAxis dataKey="name" tick={{fontSize: 10, fill: '#9ca3af'}} tickLine={false} axisLine={false} dy={10} />
-                      <Tooltip 
-                        contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '8px 12px'}}
-                        itemStyle={{color: '#0284c7', fontSize: '13px', fontWeight: 'bold'}}
-                        cursor={{fill: '#f0f9ff', radius: 4}}
-                      />
-                      <Bar dataKey="net" radius={[6, 6, 6, 6]} barSize={24}>
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={index === chartData.length -1 ? 'url(#colorNet)' : '#e0f2fe'} />
-                        ))}
-                      </Bar>
-                      <defs>
-                        <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#0ea5e9" stopOpacity={1}/>
-                          <stop offset="100%" stopColor="#0284c7" stopOpacity={1}/>
-                        </linearGradient>
-                      </defs>
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="h-32 w-full flex items-end justify-between gap-2 sm:gap-4 px-1">
+                   {last7Days.map((r, i) => {
+                      const heightPct = r.isOffDay ? 0 : Math.max(Math.round((r.totals.net / maxVal) * 100), 10);
+                      const isLast = i === last7Days.length - 1;
+                      return (
+                        <div key={r.reportId} className="flex flex-col items-center gap-2 flex-1 h-full justify-end group cursor-default">
+                           {/* Bar */}
+                           <div 
+                              className={`w-full max-w-[24px] sm:max-w-[32px] rounded-t-lg transition-all duration-700 ease-out relative ${
+                                isLast 
+                                  ? 'bg-gradient-to-t from-brand-600 to-brand-400 shadow-[0_4px_12px_rgba(2,132,199,0.3)]' 
+                                  : 'bg-gradient-to-t from-brand-100 to-brand-50 group-hover:from-brand-200 group-hover:to-brand-100'
+                              }`}
+                              style={{ height: `${heightPct}%` }}
+                           >
+                              {/* Tooltip */}
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0 whitespace-nowrap z-10 pointer-events-none shadow-xl">
+                                {formatCurrency(r.totals.net)}
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
+                              </div>
+                           </div>
+                           {/* Label */}
+                           <span className={`text-[10px] font-bold ${isLast ? 'text-brand-600' : 'text-gray-400'}`}>
+                             {r.dateLocal.slice(5)}
+                           </span>
+                        </div>
+                      );
+                   })}
                 </div>
               </div>
             )}
@@ -313,7 +370,7 @@ const Dashboard: React.FC = () => {
                       onClick={() => navigate(`/report/${mostRecentReport.reportId}`)}
                       className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xl shadow-brand-900/5 active:scale-[0.98] transition-all cursor-pointer group relative overflow-hidden"
                     >
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-brand-50/50 rounded-full -mr-10 -mt-10 blur-2xl group-hover:bg-brand-100/50 transition-colors"></div>
+                      <div className={`absolute top-0 right-0 w-32 h-32 rounded-full -mr-10 -mt-10 blur-2xl transition-colors ${mostRecentReport.isOffDay ? 'bg-gray-100/50' : 'bg-brand-50/50 group-hover:bg-brand-100/50'}`}></div>
                       
                       <div className="relative z-10">
                         <div className="flex justify-between items-start mb-3">
@@ -323,12 +380,27 @@ const Dashboard: React.FC = () => {
                            <span className="text-gray-400 text-xs font-medium bg-gray-50 px-2 py-1 rounded-md">{mostRecentReport.timeLocal}</span>
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-1 line-clamp-1">{mostRecentReport.storeName}</h3>
-                        <p className="text-xs text-gray-500 mb-4">{mostRecentReport.items.length} items recorded</p>
+                        
+                        {mostRecentReport.isOffDay ? (
+                            <p className="text-xs text-gray-400 mb-4 flex items-center gap-1">
+                               <Coffee size={12} /> Relax & Recharge
+                            </p>
+                        ) : (
+                            <p className="text-xs text-gray-500 mb-4">{mostRecentReport.items.length} items recorded</p>
+                        )}
                         
                         <div className="flex items-end justify-between border-t border-gray-50 pt-4">
-                           <div className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-brand-800">
-                              {formatCurrency(mostRecentReport.totals.net)}
-                           </div>
+                           {mostRecentReport.isOffDay ? (
+                              <div className="flex items-center gap-2 text-gray-400">
+                                 <div className="p-1.5 bg-gray-100 rounded-full"><Coffee size={18} /></div>
+                                 <span className="text-lg font-bold text-gray-500">Off Day</span>
+                              </div>
+                           ) : (
+                              <div className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-brand-800">
+                                  {formatCurrency(mostRecentReport.totals.net)}
+                              </div>
+                           )}
+                           
                            <div className="h-8 w-8 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-all shadow-sm">
                              <ChevronRight size={18} />
                            </div>
@@ -368,6 +440,7 @@ const Dashboard: React.FC = () => {
                 ) : (
                   filteredReports.map((report) => {
                     const isSelected = selectedIds.has(report.reportId);
+                    const isOffDay = report.isOffDay;
                     return (
                       <div 
                         key={report.reportId}
@@ -400,8 +473,12 @@ const Dashboard: React.FC = () => {
                           <p className={`text-sm font-bold truncate pr-2 ${isSelected ? 'text-brand-900' : 'text-gray-900'}`}>{report.storeName}</p>
                         </div>
                         <div className="text-right">
-                          <span className={`block text-base font-bold ${isSelected ? 'text-brand-700' : 'text-brand-600'}`}>{formatCurrency(report.totals.net)}</span>
-                          {!isSelectionMode && (
+                          {isOffDay ? (
+                              <span className="text-[10px] font-bold text-gray-400 bg-gray-100 border border-gray-200 px-2 py-1 rounded-md uppercase tracking-wider">Off Day</span>
+                          ) : (
+                              <span className={`block text-base font-bold ${isSelected ? 'text-brand-700' : 'text-brand-600'}`}>{formatCurrency(report.totals.net)}</span>
+                          )}
+                          {!isSelectionMode && !isOffDay && (
                             <div className="flex items-center justify-end text-gray-400 text-[10px] mt-1 font-medium uppercase tracking-wide group-hover:text-brand-400 transition-colors">
                               {report.items.length} items <ChevronRight size={10} className="ml-1" />
                             </div>

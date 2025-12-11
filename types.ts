@@ -1,3 +1,4 @@
+
 export interface SalesItem {
   sku: string;
   productName: string;
@@ -39,4 +40,7 @@ export interface DailyReport {
 
 export interface AppConfig {
   salesRepName: string;
+  phoneNumber?: string;
+  enableReminders?: boolean;
+  reminderTime?: string;
 }

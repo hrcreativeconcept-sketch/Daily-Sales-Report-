@@ -50,13 +50,20 @@ const ReportEditor: React.FC = () => {
       if (isNew) {
         const { dateLocal, timeLocal, tz } = CalculationUtils.getLocalDateTimeAndTimezone();
         const config = StorageService.loadConfig();
+        
+        let defaultName = config.salesRepName || '';
+        // If phone number exists, append it to default name for convenience
+        if (config.phoneNumber) {
+            defaultName += ` | ${config.phoneNumber}`;
+        }
+
         const newReport: DailyReport = {
           reportId: CalculationUtils.generateId(),
           dateLocal,
           timeLocal,
           timezone: tz,
           storeName: MOCK_STORES[0],
-          salesRepName: config.salesRepName || '',
+          salesRepName: defaultName,
           items: [],
           totals: { gross: 0, discounts: 0, net: 0 },
           sources: [],
@@ -260,7 +267,10 @@ const ReportEditor: React.FC = () => {
     setSaving(true);
     try {
       await StorageService.saveReport(report);
-      StorageService.saveConfig({ salesRepName: report.salesRepName });
+      // NOTE: We only save name to config if user manually edits it, but here we just rely on SettingsModal for main config updates.
+      // However, for better UX, if user updates name here, we could update config. 
+      // StorageService.saveConfig({ salesRepName: report.salesRepName.split(' | ')[0] }); // Risky to parse.
+      
       setIsDirty(false);
       setErrors({});
       
@@ -289,7 +299,7 @@ const ReportEditor: React.FC = () => {
     navigate(`/share/${report?.reportId}`);
   };
 
-  const handleSplitAndSave = async () => {
+  const handleSplit = () => {
     if (!report) return;
     if (!staff2Name.trim()) {
       alert("Please enter a name for the second staff member.");
@@ -320,19 +330,18 @@ const ReportEditor: React.FC = () => {
       };
       reportB.shareMessage = CalculationUtils.buildShareMessage(reportB);
 
-      // 3. Save Both
-      await StorageService.saveReport(reportA);
-      await StorageService.saveReport(reportB);
+      // NOTE: We do NOT save these to DB or delete the original.
+      // This is purely for generating shareable content.
       
       // Save config for convenience
       StorageService.saveConfig({ salesRepName: report.salesRepName });
 
-      // 4. Update State to Show Success View (Don't navigate)
+      // 4. Update State to Show Success View
       setCreatedSplitReports({ a: reportA, b: reportB });
       
     } catch (e: any) {
       console.error(e);
-      alert(`Failed to split and save reports: ${e.message}`);
+      alert(`Failed to generate split reports: ${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -382,7 +391,7 @@ const ReportEditor: React.FC = () => {
             <div className="bg-brand-600 p-4 text-white flex justify-between items-center shrink-0">
                <h2 className="text-lg font-bold flex items-center gap-2">
                  <Users size={20} /> 
-                 {createdSplitReports ? 'Reports Created' : 'Split Report'}
+                 {createdSplitReports ? 'Reports Generated' : 'Split Report'}
                </h2>
                <button onClick={() => setIsSplitModalOpen(false)} className="bg-white/10 p-1.5 rounded-full hover:bg-white/20">
                  <X size={18} />
@@ -502,7 +511,7 @@ const ReportEditor: React.FC = () => {
                     <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2">
                       <CheckCircle size={24} />
                     </div>
-                    <p className="text-sm text-gray-600">Successfully split into two reports.</p>
+                    <p className="text-sm text-gray-600">Reports generated. You can now share them.</p>
                   </div>
 
                   {/* Result Card A */}
@@ -569,19 +578,19 @@ const ReportEditor: React.FC = () => {
                      Cancel
                    </button>
                    <button 
-                     onClick={handleSplitAndSave}
+                     onClick={handleSplit}
                      disabled={saving || !staff2Name}
                      className="flex-[2] py-3 font-bold text-white bg-brand-600 rounded-xl shadow-lg shadow-brand-500/20 hover:bg-brand-700 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
                    >
                      {saving ? <Loader2 className="animate-spin" size={18} /> : <Split size={18} />}
-                     Split & Save
+                     Generate Split
                    </button>
                  </>
                ) : (
                  <button 
                    onClick={() => {
                      setIsSplitModalOpen(false);
-                     navigate('/');
+                     // Stay on page
                    }}
                    className="w-full py-3 font-bold text-white bg-gray-900 rounded-xl shadow-lg hover:bg-black"
                  >
@@ -594,66 +603,66 @@ const ReportEditor: React.FC = () => {
       )}
 
       {/* Sticky Header with Backdrop Blur */}
-      <div className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-200 z-50 px-4 py-3 flex items-center justify-between shadow-sm transition-all">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors">
-            <ArrowLeft size={22} />
+      <div className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-gray-200 z-50 px-3 py-2 flex items-center justify-between shadow-sm transition-all">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button onClick={() => navigate('/')} className="p-2 text-gray-500 hover:text-gray-900 rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors">
+            <ArrowLeft size={20} />
           </button>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-gray-900 leading-tight">{isNew ? 'New Report' : 'Edit Report'}</h1>
-              {/* Undo / Redo Buttons */}
-              <div className="flex gap-1 ml-2">
-                <button 
-                  onClick={undo} 
-                  disabled={!canUndo} 
-                  className="p-1 text-gray-500 disabled:opacity-30 hover:bg-gray-100 rounded-md transition-all active:scale-90"
-                  title="Undo"
-                >
-                  <Undo2 size={18} />
-                </button>
-                <button 
-                  onClick={redo} 
-                  disabled={!canRedo} 
-                  className="p-1 text-gray-500 disabled:opacity-30 hover:bg-gray-100 rounded-md transition-all active:scale-90"
-                  title="Redo"
-                >
-                  <Redo2 size={18} />
-                </button>
-              </div>
-            </div>
+          
+          <div className="h-6 w-px bg-gray-200 mx-1"></div>
 
-            {saveSuccess ? (
-              <span className="text-[10px] text-green-600 font-bold uppercase tracking-wider flex items-center gap-1 animate-in fade-in"><CheckCircle size={10}/> Saved</span>
-            ) : (
-              <span className={`text-[10px] font-medium transition-colors ${isDirty ? 'text-amber-500' : 'text-gray-400'}`}>{isDirty ? 'Unsaved changes' : 'All changes saved'}</span>
-            )}
+          <div className="flex items-center gap-0.5">
+            <button 
+              onClick={undo} 
+              disabled={!canUndo} 
+              className="p-2 text-gray-400 disabled:opacity-30 hover:text-gray-700 hover:bg-gray-50 rounded-full transition-all active:scale-95"
+              title="Undo"
+            >
+              <Undo2 size={18} />
+            </button>
+            <button 
+              onClick={redo} 
+              disabled={!canRedo} 
+              className="p-2 text-gray-400 disabled:opacity-30 hover:text-gray-700 hover:bg-gray-50 rounded-full transition-all active:scale-95"
+              title="Redo"
+            >
+              <Redo2 size={18} />
+            </button>
+          </div>
+
+          {/* Status Indicator - Mini */}
+          <div className="ml-1 flex flex-col justify-center">
+             {saveSuccess ? (
+                <span className="text-[10px] text-green-600 font-bold uppercase tracking-wide flex items-center gap-1 animate-in fade-in"><CheckCircle size={10}/> Saved</span>
+              ) : (
+                <span className={`text-[10px] font-bold tracking-wide transition-colors ${isDirty ? 'text-amber-500' : 'text-gray-300'}`}>{isDirty ? 'Unsaved' : 'Saved'}</span>
+              )}
           </div>
         </div>
         
-        {/* Updated Actions: Clear Labeled Buttons */}
         <div className="flex items-center gap-2">
           {report.items.length > 0 && (
             <button 
               onClick={() => setIsSplitModalOpen(true)}
-              className="p-2.5 text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"
+              className="p-2 text-brand-600 hover:bg-brand-50 rounded-full transition-colors active:scale-95 border border-transparent hover:border-brand-100"
               title="Split Report"
             >
-              <Users size={20} />
+              <Users size={18} />
             </button>
           )}
 
           <button 
             onClick={handleShare} 
-            className="bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 px-4 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm hover:shadow-md" 
-            title="Save & Share"
+            className="text-brand-600 hover:bg-brand-50 p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5" 
+            title="Share"
           >
-            <Share2 size={16} /> Share
+            <Share2 size={18} /> <span className="hidden sm:inline">Share</span>
           </button>
+          
           <button 
             onClick={handleSaveAndExit} 
             disabled={saving}
-            className="bg-gray-900 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-gray-900/20 hover:bg-black active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 text-xs font-bold"
+            className="bg-gray-900 text-white px-4 py-2 rounded-xl shadow-lg shadow-gray-900/20 hover:bg-black active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 text-xs font-bold"
           >
             {saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={16} />}
             Save

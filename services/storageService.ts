@@ -233,5 +233,11 @@ export const saveConfig = (config: AppConfig) => {
 
 export const loadConfig = (): AppConfig => {
   const data = localStorage.getItem(LOCAL_STORAGE_KEYS.CONFIG);
-  return data ? JSON.parse(data) : { salesRepName: '' };
+  const parsed = data ? JSON.parse(data) : {};
+  return { 
+    salesRepName: parsed.salesRepName || '',
+    phoneNumber: parsed.phoneNumber || '',
+    enableReminders: parsed.enableReminders || false,
+    reminderTime: parsed.reminderTime || '22:00'
+  };
 };

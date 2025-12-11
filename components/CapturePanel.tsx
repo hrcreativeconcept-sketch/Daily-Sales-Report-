@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Camera, Mic, Upload, Loader2, Clipboard, StopCircle, ArrowRight, Check, X, Volume2, AlertTriangle } from 'lucide-react';
 import { SalesItem } from '../types';
 import * as GeminiService from '../services/geminiService';
@@ -19,8 +19,9 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
   const [activeTab, setActiveTab] = useState<TabType>('snap');
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  
+  // Replace useRef with useState for compatibility
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   
   // Review Mode State
   const [pendingItems, setPendingItems] = useState<SalesItem[] | null>(null);
@@ -251,20 +252,22 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      setMediaRecorder(recorder);
+      
+      // Use local variable for chunks to avoid closure/ref issues
+      const localChunks: Blob[] = [];
 
-      mediaRecorder.ondataavailable = (event) => {
+      recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          localChunks.push(event.data);
         }
       };
 
-      mediaRecorder.onstop = async () => {
+      recorder.onstop = async () => {
         setIsProcessing(true);
         const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const audioBlob = new Blob(localChunks, { type: mimeType });
         
         const reader = new FileReader();
         reader.onloadend = async () => {
@@ -283,7 +286,7 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
         stream.getTracks().forEach(track => track.stop());
       };
 
-      mediaRecorder.start();
+      recorder.start();
       setIsRecording(true);
     } catch (err) {
       alert("Microphone access denied or not available.");
@@ -291,8 +294,8 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
       setIsRecording(false);
     }
   };
