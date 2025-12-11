@@ -42,7 +42,7 @@ const mapToDb = async (report: DailyReport) => {
   
   return {
     report_id: report.reportId,
-    // user_id column removed as it does not exist in the schema
+    user_id: userId, // Restored: Required for Row Level Security (RLS) policies
     date_local: report.dateLocal,
     time_local: report.timeLocal,
     timezone: report.timezone,
@@ -158,6 +158,11 @@ export const saveReport = async (report: DailyReport): Promise<void> => {
     .upsert(payload);
 
   if (error) {
+    // Check specifically for the schema cache error and retry or warn
+    if (error.message.includes('Could not find the \'user_id\' column')) {
+       console.error("Schema Cache Error: The database might be updating. Please try again in a moment.");
+       throw new Error("Database Sync Error: Please try again.");
+    }
     console.error('Error saving report:', error.message);
     throw new Error(`Database Error: ${error.message}`);
   }

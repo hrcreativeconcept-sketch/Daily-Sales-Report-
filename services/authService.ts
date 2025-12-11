@@ -81,7 +81,7 @@ export const migrateGuestDataToUser = async (userId: string) => {
         const newSources = [...sources, `user:${userId}`];
         updates.push({
             ...row,
-            // user_id removed as it does not exist in schema
+            user_id: userId, // Restored for data ownership
             sources: newSources
         });
     }
