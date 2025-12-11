@@ -64,7 +64,13 @@ export const buildShareMessage = (report: DailyReport): string => {
   // Dubai Hill Mall
   // 30-Nov-2025 
   // Sale Report
-  let message = `${report.storeName}\n${dateFormatted} \n\nSale Report\n`;
+  let message = `${report.storeName}\n${dateFormatted} \n\nSale Report`;
+  
+  if (report.salesRepName) {
+    message += ` (${report.salesRepName})`;
+  }
+  
+  message += `\n`;
 
   // 3. Build Item List
   // 1. 1 Iphone Screen Protector 80 AED
@@ -101,4 +107,67 @@ export const generateId = () => {
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
+};
+
+/**
+ * Splits sales items into two lists based on a target ratio (e.g., 0.6 for 60/40).
+ * Uses a greedy approach to minimize deviation from the target value for the first set.
+ */
+export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[], SalesItem[]] => {
+  // 1. Flatten all items into single units to allow granular splitting
+  const units: { item: SalesItem; price: number }[] = [];
+  items.forEach(item => {
+    for (let i = 0; i < item.quantity; i++) {
+      units.push({ item: { ...item, quantity: 1 }, price: item.unitPrice });
+    }
+  });
+
+  // 2. Sort units by price descending (Greedy strategy works best with largest items first)
+  units.sort((a, b) => b.price - a.price);
+
+  const totalValue = units.reduce((sum, u) => sum + u.price, 0);
+  const targetValueA = totalValue * ratio;
+  
+  const unitsA: typeof units = [];
+  const unitsB: typeof units = [];
+  let currentSumA = 0;
+
+  // 3. Allocate
+  units.forEach(unit => {
+     // Check if adding this unit to A brings us closer to target or overshoots it too much
+     // We compare the absolute difference from target if we add it vs if we don't.
+     const distIfAdd = Math.abs((currentSumA + unit.price) - targetValueA);
+     const distIfSkip = Math.abs(currentSumA - targetValueA);
+     
+     // Note: If sums are equal, we default to A to fill it up first (greedy) 
+     if (distIfAdd <= distIfSkip) {
+         unitsA.push(unit);
+         currentSumA += unit.price;
+     } else {
+         unitsB.push(unit);
+     }
+  });
+
+  // 4. Re-merge identical items back into clean lists
+  const merge = (uList: typeof units) => {
+      const merged: SalesItem[] = [];
+      uList.forEach(u => {
+          // Find existing item with same properties to increment quantity
+          const existing = merged.find(m => 
+            m.productName === u.item.productName && 
+            m.unitPrice === u.item.unitPrice && 
+            m.sku === u.item.sku &&
+            m.notes === u.item.notes
+          );
+          
+          if (existing) {
+              existing.quantity += 1;
+          } else {
+              merged.push({ ...u.item }); // Clone to avoid ref issues
+          }
+      });
+      return merged;
+  };
+
+  return [merge(unitsA), merge(unitsB)];
 };

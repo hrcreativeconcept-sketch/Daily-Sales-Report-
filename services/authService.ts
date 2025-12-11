@@ -51,10 +51,7 @@ export const migrateGuestDataToUser = async (userId: string) => {
   
   // 1. Fetch all reports visible to this device (using the raw query logic from storageService essentially)
   // We reuse loadReports, but we need to know we are in a transition state.
-  // Actually, simplest way: Fetch all reports, check if they have deviceId but NO user tag.
-  
-  // We can't use loadReports() directly because it might already be using the userId filter now that we are logged in.
-  // We need a raw fetch here.
+  // We need a raw fetch here to see what is currently on the device/database.
   
   const { data: reports } = await supabase
     .from('daily_reports')
@@ -84,13 +81,13 @@ export const migrateGuestDataToUser = async (userId: string) => {
         const newSources = [...sources, `user:${userId}`];
         updates.push({
             ...row,
+            user_id: userId, // CRITICAL: Assign ownership for RLS
             sources: newSources
         });
     }
   }
 
   // Perform updates
-  // Supabase doesn't support bulk update easily with different values, so we loop (it's client side migration, usually small amount of data for guest)
   for (const update of updates) {
       await supabase.from('daily_reports').upsert(update);
   }

@@ -42,6 +42,7 @@ const mapToDb = async (report: DailyReport) => {
   
   return {
     report_id: report.reportId,
+    user_id: userId, // CRITICAL: Required for RLS policies (auth.uid() = user_id)
     date_local: report.dateLocal,
     time_local: report.timeLocal,
     timezone: report.timezone,

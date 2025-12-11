@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2, Save } from 'lucide-react';
+import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2, Save, Users, X, Split, Percent } from 'lucide-react';
 import { DailyReport, SalesItem, SourceType } from '../types';
 import * as StorageService from '../services/storageService';
 import * as CalculationUtils from '../utils/calculations';
@@ -30,6 +31,15 @@ const ReportEditor: React.FC = () => {
   // Validation State
   const [errors, setErrors] = useState<Record<number, { [key in keyof SalesItem]?: string } & { items?: string }>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
+
+  // Split Feature State
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [splitRatio, setSplitRatio] = useState<0.5 | 0.6 | 0.7>(0.5);
+  const [staff2Name, setStaff2Name] = useState('');
+  const [splitPreview, setSplitPreview] = useState<{
+    itemsA: SalesItem[], totalA: number,
+    itemsB: SalesItem[], totalB: number
+  } | null>(null);
 
   // Initialize Report
   useEffect(() => {
@@ -83,6 +93,16 @@ const ReportEditor: React.FC = () => {
     setReport(updatedReport);
     setIsDirty(true);
   }, [report, setReport]);
+
+  // Update Split Preview when modal opens or params change
+  useEffect(() => {
+    if (isSplitModalOpen && report) {
+      const [itemsA, itemsB] = CalculationUtils.splitSalesItems(report.items, splitRatio);
+      const totalA = itemsA.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
+      const totalB = itemsB.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
+      setSplitPreview({ itemsA, totalA, itemsB, totalB });
+    }
+  }, [isSplitModalOpen, splitRatio, report]);
 
   // Timezone & Date Consistency Check
   useEffect(() => {
@@ -222,6 +242,56 @@ const ReportEditor: React.FC = () => {
     navigate(`/share/${report?.reportId}`);
   };
 
+  const handleSplitAndSave = async () => {
+    if (!report || !splitPreview) return;
+    if (!staff2Name.trim()) {
+      alert("Please enter a name for the second staff member.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // 1. Prepare Report A (Current User/Staff 1)
+      const reportA: DailyReport = {
+        ...report,
+        reportId: CalculationUtils.generateId(), // New ID
+        items: splitPreview.itemsA,
+        totals: CalculationUtils.computeTotals(splitPreview.itemsA, 0), // Assuming no discounts split for now
+        salesRepName: report.salesRepName,
+        createdAt: Date.now()
+      };
+      reportA.shareMessage = CalculationUtils.buildShareMessage(reportA);
+
+      // 2. Prepare Report B (Staff 2)
+      const reportB: DailyReport = {
+        ...report,
+        reportId: CalculationUtils.generateId(), // New ID
+        items: splitPreview.itemsB,
+        totals: CalculationUtils.computeTotals(splitPreview.itemsB, 0),
+        salesRepName: staff2Name,
+        createdAt: Date.now() + 1 // Ensure distinct timestamps
+      };
+      reportB.shareMessage = CalculationUtils.buildShareMessage(reportB);
+
+      // 3. Save Both
+      await StorageService.saveReport(reportA);
+      await StorageService.saveReport(reportB);
+      
+      // Save config for convenience
+      StorageService.saveConfig({ salesRepName: report.salesRepName });
+
+      // 4. Navigate to Dashboard
+      setIsSplitModalOpen(false);
+      navigate('/');
+      
+    } catch (e) {
+      console.error(e);
+      alert("Failed to split and save reports.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleItemsCaptured = (newItems: SalesItem[], source: SourceType) => {
     if (!report) return;
     updateReport({
@@ -247,6 +317,111 @@ const ReportEditor: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
+      {/* Split Modal */}
+      {isSplitModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsSplitModalOpen(false)}></div>
+          <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+            
+            <div className="bg-brand-600 p-4 text-white flex justify-between items-center shrink-0">
+               <h2 className="text-lg font-bold flex items-center gap-2">
+                 <Users size={20} /> Split Report
+               </h2>
+               <button onClick={() => setIsSplitModalOpen(false)} className="bg-white/10 p-1.5 rounded-full hover:bg-white/20">
+                 <X size={18} />
+               </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto">
+               {/* Ratio Selector */}
+               <div className="mb-6">
+                 <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Split Ratio</label>
+                 <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1 rounded-xl">
+                    {[0.5, 0.6, 0.7].map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setSplitRatio(r as any)}
+                        className={`py-2 rounded-lg text-sm font-bold transition-all ${splitRatio === r ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                      >
+                        {r * 100} / {100 - (r * 100)}
+                      </button>
+                    ))}
+                 </div>
+               </div>
+
+               {/* Staff Names */}
+               <div className="grid grid-cols-2 gap-4 mb-6">
+                 <div>
+                   <label className="text-xs font-bold text-brand-600 uppercase mb-1 block">Staff A ({splitRatio * 100}%)</label>
+                   <input 
+                      type="text" 
+                      value={report.salesRepName} 
+                      onChange={(e) => updateReport({ salesRepName: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                      placeholder="Name 1"
+                   />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Staff B ({Math.round((1 - splitRatio) * 100)}%)</label>
+                   <input 
+                      type="text" 
+                      value={staff2Name} 
+                      onChange={(e) => setStaff2Name(e.target.value)}
+                      className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-sm font-semibold focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                      placeholder="Name 2"
+                      autoFocus
+                   />
+                 </div>
+               </div>
+
+               {/* Preview */}
+               {splitPreview && (
+                 <div className="space-y-3 mb-6">
+                   <div className="bg-brand-50 p-3 rounded-xl border border-brand-100 flex justify-between items-center">
+                      <div>
+                        <span className="text-xs font-bold text-brand-800 uppercase block">{report.salesRepName || 'Staff A'}</span>
+                        <span className="text-[10px] text-brand-600">{splitPreview.itemsA.length} items</span>
+                      </div>
+                      <span className="text-lg font-extrabold text-brand-700">{CalculationUtils.formatCurrency(splitPreview.totalA)}</span>
+                   </div>
+                   <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex justify-between items-center">
+                      <div>
+                        <span className="text-xs font-bold text-gray-600 uppercase block">{staff2Name || 'Staff B'}</span>
+                        <span className="text-[10px] text-gray-500">{splitPreview.itemsB.length} items</span>
+                      </div>
+                      <span className="text-lg font-bold text-gray-700">{CalculationUtils.formatCurrency(splitPreview.totalB)}</span>
+                   </div>
+                 </div>
+               )}
+
+               <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 text-xs text-amber-800 mb-2">
+                 <p className="flex gap-2">
+                   <AlertTriangle size={14} className="shrink-0" />
+                   <span>This will create <strong>two separate reports</strong> and return you to the dashboard. The current draft will be preserved as Staff A's report.</span>
+                 </p>
+               </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex gap-3 shrink-0">
+               <button 
+                 onClick={() => setIsSplitModalOpen(false)}
+                 className="flex-1 py-3 font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
+               >
+                 Cancel
+               </button>
+               <button 
+                 onClick={handleSplitAndSave}
+                 disabled={saving || !staff2Name}
+                 className="flex-[2] py-3 font-bold text-white bg-brand-600 rounded-xl shadow-lg shadow-brand-500/20 hover:bg-brand-700 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+               >
+                 {saving ? <Loader2 className="animate-spin" size={18} /> : <Split size={18} />}
+                 Split & Save
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sticky Header with Backdrop Blur */}
       <div className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-200 z-50 px-4 py-3 flex items-center justify-between shadow-sm transition-all">
         <div className="flex items-center gap-3">
@@ -287,6 +462,16 @@ const ReportEditor: React.FC = () => {
         
         {/* Updated Actions: Clear Labeled Buttons */}
         <div className="flex items-center gap-2">
+          {report.items.length > 0 && (
+            <button 
+              onClick={() => setIsSplitModalOpen(true)}
+              className="p-2.5 text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"
+              title="Split Report"
+            >
+              <Users size={20} />
+            </button>
+          )}
+
           <button 
             onClick={handleShare} 
             className="bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 px-4 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm hover:shadow-md" 
