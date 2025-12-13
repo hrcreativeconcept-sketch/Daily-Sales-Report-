@@ -238,8 +238,8 @@ const ReportEditor: React.FC = () => {
     return clean.trim();
   };
 
-  const handleSave = async () => {
-    if (!report) return false;
+  const handleSave = async (showErrorAlert = true): Promise<DailyReport | null> => {
+    if (!report) return null;
     
     // Sanitize and create new object to avoid mutating state directly
     const sanitizedReport: DailyReport = {
@@ -253,48 +253,88 @@ const ReportEditor: React.FC = () => {
         }))
     };
 
+    // We check validation inside handleSave too, but caller might check it earlier.
     if (!sanitizedReport.salesRepName) {
-      alert("Please enter a Sales Rep Name");
-      return false;
+      if (showErrorAlert) alert("Please enter a Sales Rep Name");
+      return null;
     }
     
-    // Update state to match what we are saving
-    setReport(sanitizedReport);
-
     if (!validate(sanitizedReport)) {
-      return false;
+      return null;
     }
 
     setSaving(true);
     try {
       await StorageService.saveReport(sanitizedReport);
       
+      setReport(sanitizedReport);
       setIsDirty(false);
       setErrors({});
       
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
-      return true;
+      return sanitizedReport;
     } catch (e: any) {
-      // Improved Error Handling: Show specific message from service
-      alert(e.message || "Failed to save report. Please check your connection.");
-      return false;
+      if (showErrorAlert) {
+         alert(e.message || "Failed to save report. Please check your connection.");
+      }
+      return null;
     } finally {
       setSaving(false);
     }
   };
 
   const handleSaveAndExit = async () => {
-    const success = await handleSave();
-    if (success) navigate('/');
+    const saved = await handleSave();
+    if (saved) navigate('/');
   };
 
   const handleShare = async () => {
-    if (isDirty || isNew) {
-      const success = await handleSave();
-      if (!success) return;
+    if (!report) return;
+
+    // 1. Explicit Validation Check
+    // We sanitize locally just for the check to avoid side effects before save
+    const tempReport: DailyReport = {
+        ...report,
+        salesRepName: sanitizeInput(report.salesRepName),
+        items: report.items.map(i => ({
+            ...i,
+            productName: sanitizeInput(i.productName),
+            sku: sanitizeInput(i.sku),
+            notes: sanitizeInput(i.notes || '')
+        }))
+    };
+
+    if (!tempReport.salesRepName) {
+      alert("Please enter a Sales Rep Name");
+      return;
     }
-    navigate(`/share/${report?.reportId}`);
+    
+    if (!validate(tempReport)) {
+      return;
+    }
+
+    let reportToShare = report;
+    
+    // 2. Attempt Save (Best Effort)
+    if (isDirty || isNew) {
+      // Try to save, but proceed if it fails (Best Effort Sharing)
+      const saved = await handleSave(false); 
+      if (saved) {
+        reportToShare = saved;
+      } else {
+        // Save failed.
+        // We PROCEED to share page anyway so user can get their text.
+        reportToShare = tempReport;
+        // Regenerate share message on the sanitized report to be safe
+        reportToShare.shareMessage = CalculationUtils.buildShareMessage(reportToShare);
+      }
+    } else {
+       // Just use current report
+       reportToShare = report;
+    }
+    
+    navigate(`/share/${reportToShare.reportId}`, { state: { report: reportToShare } });
   };
 
   const handleSplit = () => {

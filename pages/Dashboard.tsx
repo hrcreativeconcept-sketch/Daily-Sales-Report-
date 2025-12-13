@@ -332,7 +332,7 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div className="h-32 w-full flex items-end justify-between gap-2 sm:gap-4 px-1">
                    {last7Days.map((r, i) => {
-                      const heightPct = r.isOffDay ? 0 : Math.max(Math.round((r.totals.net / maxVal) * 100), 10);
+                      const heightPct = Math.max(Math.round((r.totals.net / maxVal) * 100), 10);
                       const isLast = i === last7Days.length - 1;
                       return (
                         <div key={r.reportId} className="flex flex-col items-center gap-2 flex-1 h-full justify-end group cursor-default">
@@ -370,7 +370,7 @@ const Dashboard: React.FC = () => {
                       onClick={() => navigate(`/report/${mostRecentReport.reportId}`)}
                       className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xl shadow-brand-900/5 active:scale-[0.98] transition-all cursor-pointer group relative overflow-hidden"
                     >
-                      <div className={`absolute top-0 right-0 w-32 h-32 rounded-full -mr-10 -mt-10 blur-2xl transition-colors ${mostRecentReport.isOffDay ? 'bg-gray-100/50' : 'bg-brand-50/50 group-hover:bg-brand-100/50'}`}></div>
+                      <div className="absolute top-0 right-0 w-32 h-32 rounded-full -mr-10 -mt-10 blur-2xl transition-colors bg-brand-50/50 group-hover:bg-brand-100/50"></div>
                       
                       <div className="relative z-10">
                         <div className="flex justify-between items-start mb-3">
@@ -381,25 +381,12 @@ const Dashboard: React.FC = () => {
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-1 line-clamp-1">{mostRecentReport.storeName}</h3>
                         
-                        {mostRecentReport.isOffDay ? (
-                            <p className="text-xs text-gray-400 mb-4 flex items-center gap-1">
-                               <Coffee size={12} /> Relax & Recharge
-                            </p>
-                        ) : (
-                            <p className="text-xs text-gray-500 mb-4">{mostRecentReport.items.length} items recorded</p>
-                        )}
+                        <p className="text-xs text-gray-500 mb-4">{mostRecentReport.items.length} items recorded</p>
                         
                         <div className="flex items-end justify-between border-t border-gray-50 pt-4">
-                           {mostRecentReport.isOffDay ? (
-                              <div className="flex items-center gap-2 text-gray-400">
-                                 <div className="p-1.5 bg-gray-100 rounded-full"><Coffee size={18} /></div>
-                                 <span className="text-lg font-bold text-gray-500">Off Day</span>
-                              </div>
-                           ) : (
                               <div className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-brand-800">
                                   {formatCurrency(mostRecentReport.totals.net)}
                               </div>
-                           )}
                            
                            <div className="h-8 w-8 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-all shadow-sm">
                              <ChevronRight size={18} />
@@ -440,7 +427,6 @@ const Dashboard: React.FC = () => {
                 ) : (
                   filteredReports.map((report) => {
                     const isSelected = selectedIds.has(report.reportId);
-                    const isOffDay = report.isOffDay;
                     return (
                       <div 
                         key={report.reportId}
@@ -473,12 +459,8 @@ const Dashboard: React.FC = () => {
                           <p className={`text-sm font-bold truncate pr-2 ${isSelected ? 'text-brand-900' : 'text-gray-900'}`}>{report.storeName}</p>
                         </div>
                         <div className="text-right">
-                          {isOffDay ? (
-                              <span className="text-[10px] font-bold text-gray-400 bg-gray-100 border border-gray-200 px-2 py-1 rounded-md uppercase tracking-wider">Off Day</span>
-                          ) : (
                               <span className={`block text-base font-bold ${isSelected ? 'text-brand-700' : 'text-brand-600'}`}>{formatCurrency(report.totals.net)}</span>
-                          )}
-                          {!isSelectionMode && !isOffDay && (
+                          {!isSelectionMode && (
                             <div className="flex items-center justify-end text-gray-400 text-[10px] mt-1 font-medium uppercase tracking-wide group-hover:text-brand-400 transition-colors">
                               {report.items.length} items <ChevronRight size={10} className="ml-1" />
                             </div>

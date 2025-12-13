@@ -26,8 +26,11 @@ const mapToDb = async (report: DailyReport) => {
   const deviceId = getDeviceId();
   const userId = await getCurrentUserId();
   
-  // Clean existing tags to avoid duplication
-  const cleanSources = report.sources.filter(s => !s.startsWith('device:') && !s.startsWith('user:'));
+  // Clean existing internal tags to avoid duplication and ensure clean rebuild
+  const cleanSources = report.sources.filter(s => 
+    !s.startsWith('device:') && 
+    !s.startsWith('user:')
+  );
   
   // Explicitly cast to string[] to allow adding internal tags
   const finalSources: string[] = [...cleanSources];
@@ -53,9 +56,8 @@ const mapToDb = async (report: DailyReport) => {
     sources: finalSources,
     attachments: report.attachments,
     share_message: report.shareMessage,
-    // Convert JS timestamp (ms) to PostgreSQL ISO string for timestamptz compatibility
-    created_at: new Date(report.createdAt).toISOString(),
-    is_off_day: report.isOffDay || false
+    // Database column is bigint (milliseconds), so we pass the number directly
+    created_at: report.createdAt
   };
 };
 
@@ -74,7 +76,9 @@ const mapFromDb = (row: any): DailyReport => {
 
   // Filter out internal isolation tags so they don't clutter UI
   const cleanSources = rawSources.filter((s: string) => 
-    typeof s === 'string' && !s.startsWith('device:') && !s.startsWith('user:')
+    typeof s === 'string' && 
+    !s.startsWith('device:') && 
+    !s.startsWith('user:')
   ) as SourceType[];
 
   return {
@@ -91,8 +95,7 @@ const mapFromDb = (row: any): DailyReport => {
     shareMessage: row.share_message || '',
     createdAt: (typeof row.created_at === 'string' && row.created_at.includes('T'))
       ? new Date(row.created_at).getTime()
-      : parseInt(String(row.created_at || '0'), 10) || Date.now(),
-    isOffDay: row.is_off_day || false
+      : parseInt(String(row.created_at || '0'), 10) || Date.now()
   };
 };
 

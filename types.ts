@@ -36,7 +36,6 @@ export interface DailyReport {
   attachments: Attachment[];
   shareMessage: string;
   createdAt: number; // Timestamp for sorting
-  isOffDay?: boolean;
 }
 
 export interface AppConfig {
