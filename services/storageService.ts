@@ -54,7 +54,8 @@ const mapToDb = async (report: DailyReport) => {
     attachments: report.attachments,
     share_message: report.shareMessage,
     // Convert JS timestamp (ms) to PostgreSQL ISO string for timestamptz compatibility
-    created_at: new Date(report.createdAt).toISOString()
+    created_at: new Date(report.createdAt).toISOString(),
+    is_off_day: report.isOffDay || false
   };
 };
 
@@ -90,7 +91,8 @@ const mapFromDb = (row: any): DailyReport => {
     shareMessage: row.share_message || '',
     createdAt: (typeof row.created_at === 'string' && row.created_at.includes('T'))
       ? new Date(row.created_at).getTime()
-      : parseInt(String(row.created_at || '0'), 10) || Date.now()
+      : parseInt(String(row.created_at || '0'), 10) || Date.now(),
+    isOffDay: row.is_off_day || false
   };
 };
 

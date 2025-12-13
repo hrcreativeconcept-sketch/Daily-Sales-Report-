@@ -51,11 +51,8 @@ const ReportEditor: React.FC = () => {
         const { dateLocal, timeLocal, tz } = CalculationUtils.getLocalDateTimeAndTimezone();
         const config = StorageService.loadConfig();
         
-        let defaultName = config.salesRepName || '';
-        // If phone number exists, append it to default name for convenience
-        if (config.phoneNumber) {
-            defaultName += ` | ${config.phoneNumber}`;
-        }
+        // Cleanly join name and phone if they exist
+        const defaultName = [config.salesRepName, config.phoneNumber].filter(Boolean).join(' | ');
 
         const newReport: DailyReport = {
           reportId: CalculationUtils.generateId(),
@@ -184,21 +181,21 @@ const ReportEditor: React.FC = () => {
     }
   }, [report?.timezone, report?.dateLocal]);
 
-  const validate = (): boolean => {
-    if (!report) return false;
+  const validate = (reportToValidate: DailyReport | null = report): boolean => {
+    if (!reportToValidate) return false;
     let isValid = true;
     const newErrors: Record<number, { [key in keyof SalesItem]?: string } & { items?: string }> = {};
     setGlobalError(null);
 
     // 1. Check Items Length
-    if (report.items.length === 0) {
+    if (reportToValidate.items.length === 0) {
       newErrors[-1] = { items: "At least one item is required." }; 
       setGlobalError("Please add at least one item.");
       isValid = false;
     }
 
     // 2. Check Item Fields
-    report.items.forEach((item, index) => {
+    reportToValidate.items.forEach((item, index) => {
       const itemErrors: { [key in keyof SalesItem]?: string } = {};
 
       if (!item.productName || !(item.productName || '').trim()) {
@@ -244,32 +241,33 @@ const ReportEditor: React.FC = () => {
   const handleSave = async () => {
     if (!report) return false;
     
-    // Sanitize text fields
-    const salesRepName = sanitizeInput(report.salesRepName);
-    report.salesRepName = salesRepName;
-    
-    report.items = report.items.map(i => ({
-      ...i,
-      productName: sanitizeInput(i.productName),
-      sku: sanitizeInput(i.sku),
-      notes: sanitizeInput(i.notes)
-    }));
+    // Sanitize and create new object to avoid mutating state directly
+    const sanitizedReport: DailyReport = {
+        ...report,
+        salesRepName: sanitizeInput(report.salesRepName),
+        items: report.items.map(i => ({
+            ...i,
+            productName: sanitizeInput(i.productName),
+            sku: sanitizeInput(i.sku),
+            notes: sanitizeInput(i.notes || '')
+        }))
+    };
 
-    if (!salesRepName) {
+    if (!sanitizedReport.salesRepName) {
       alert("Please enter a Sales Rep Name");
       return false;
     }
+    
+    // Update state to match what we are saving
+    setReport(sanitizedReport);
 
-    if (!validate()) {
+    if (!validate(sanitizedReport)) {
       return false;
     }
 
     setSaving(true);
     try {
-      await StorageService.saveReport(report);
-      // NOTE: We only save name to config if user manually edits it, but here we just rely on SettingsModal for main config updates.
-      // However, for better UX, if user updates name here, we could update config. 
-      // StorageService.saveConfig({ salesRepName: report.salesRepName.split(' | ')[0] }); // Risky to parse.
+      await StorageService.saveReport(sanitizedReport);
       
       setIsDirty(false);
       setErrors({});
