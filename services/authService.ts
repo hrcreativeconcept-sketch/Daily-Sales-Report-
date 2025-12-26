@@ -49,10 +49,7 @@ export const signOut = async () => {
 export const migrateGuestDataToUser = async (userId: string) => {
   const deviceId = getDeviceId();
   
-  // 1. Fetch all reports visible to this device (using the raw query logic from storageService essentially)
-  // We reuse loadReports, but we need to know we are in a transition state.
-  // We need a raw fetch here to see what is currently on the device/database.
-  
+  // 1. Fetch all reports visible to this device
   const { data: reports } = await supabase
     .from('daily_reports')
     .select('*')
@@ -73,15 +70,14 @@ export const migrateGuestDataToUser = async (userId: string) => {
     }
 
     const hasDeviceTag = sources.includes(`device:${deviceId}`);
-    const hasUserTag = sources.some(s => s.startsWith('user:'));
-    const alreadyHasThisUser = sources.includes(`user:${userId}`);
+    const alreadyHasThisUser = sources.includes(`user:${userId}`) || sources.includes(userId);
 
     // If it belongs to this device and doesn't belong to the user yet
     if (hasDeviceTag && !alreadyHasThisUser) {
-        const newSources = [...sources, `user:${userId}`];
+        // Add both legacy prefixed and raw UUID for RLS compatibility
+        const newSources = [...sources, userId, `user:${userId}`];
         updates.push({
             ...row,
-            // user_id removed from payload as column does not exist
             sources: newSources
         });
     }
@@ -89,6 +85,8 @@ export const migrateGuestDataToUser = async (userId: string) => {
 
   // Perform updates
   for (const update of updates) {
+      // Upserting might fail if the row has strict RLS and the current session is anon,
+      // but migration is usually called immediately after signIn success.
       await supabase.from('daily_reports').upsert(update);
   }
 };

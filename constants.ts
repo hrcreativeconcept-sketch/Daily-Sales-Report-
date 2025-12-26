@@ -3,6 +3,7 @@ export const DEFAULT_CURRENCY = 'AED';
 export const LOCAL_STORAGE_KEYS = {
   REPORTS: 'dsr_reports_v1',
   CONFIG: 'dsr_config_v1',
+  LAST_STORE: 'dsr_last_store_v1',
 };
 
 export const MOCK_STORES = [

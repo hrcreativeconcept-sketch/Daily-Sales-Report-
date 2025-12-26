@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2, Save, Users, X, Split, Percent, Copy, MessageCircle, ArrowRightLeft, ArrowRight, ArrowLeft as ArrowLeftIcon, Plus, Minus } from 'lucide-react';
 import { DailyReport, SalesItem, SourceType } from '../types';
 import * as StorageService from '../services/storageService';
 import * as CalculationUtils from '../utils/calculations';
-import { MOCK_STORES } from '../constants';
+import { MOCK_STORES, LOCAL_STORAGE_KEYS } from '../constants';
 import useUndoRedo from '../hooks/useUndoRedo';
 
 import CapturePanel from '../components/CapturePanel';
@@ -51,6 +50,9 @@ const ReportEditor: React.FC = () => {
         const { dateLocal, timeLocal, tz } = CalculationUtils.getLocalDateTimeAndTimezone();
         const config = StorageService.loadConfig();
         
+        // Retrieve last used store from local storage
+        const lastStore = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_STORE) || MOCK_STORES[0];
+        
         // Cleanly join name and phone if they exist
         const defaultName = [config.salesRepName, config.phoneNumber].filter(Boolean).join(' | ');
 
@@ -59,7 +61,7 @@ const ReportEditor: React.FC = () => {
           dateLocal,
           timeLocal,
           timezone: tz,
-          storeName: MOCK_STORES[0],
+          storeName: lastStore,
           salesRepName: defaultName,
           items: [],
           totals: { gross: 0, discounts: 0, net: 0 },
@@ -791,7 +793,12 @@ const ReportEditor: React.FC = () => {
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-500 transition-colors"><MapPin size={16}/></div>
               <select 
                 value={report.storeName || ''}
-                onChange={(e) => updateReport({ storeName: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  updateReport({ storeName: val });
+                  // Persist the selected store to local storage
+                  localStorage.setItem(LOCAL_STORAGE_KEYS.LAST_STORE, val);
+                }}
                 className="w-full text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-8 py-3 appearance-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all"
               >
                 {MOCK_STORES.map(s => <option key={s} value={s}>{s}</option>)}

@@ -29,7 +29,9 @@ const mapToDb = async (report: DailyReport) => {
   // Clean existing internal tags to avoid duplication and ensure clean rebuild
   const cleanSources = report.sources.filter(s => 
     !s.startsWith('device:') && 
-    !s.startsWith('user:')
+    !s.startsWith('user:') &&
+    // Also filter out any raw UUIDs that might have been saved previously
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
   );
   
   // Explicitly cast to string[] to allow adding internal tags
@@ -38,14 +40,16 @@ const mapToDb = async (report: DailyReport) => {
   // Always add device ID for audit/tracking
   finalSources.push(`device:${deviceId}`);
   
-  // If user is logged in, add user ID (this becomes the primary isolation key)
+  // If user is logged in, add user ID
   if (userId) {
+    // 1. Add raw UUID: Critical for standard RLS policies using auth.uid()::text = ANY(sources)
+    finalSources.push(userId);
+    // 2. Add prefixed version: Maintains consistency with current app internal logic
     finalSources.push(`user:${userId}`);
   }
   
   return {
     report_id: report.reportId,
-    // user_id removed: Column does not exist in DB. Ownership is tracked via 'sources' array.
     date_local: report.dateLocal,
     time_local: report.timeLocal,
     timezone: report.timezone,
@@ -56,7 +60,6 @@ const mapToDb = async (report: DailyReport) => {
     sources: finalSources,
     attachments: report.attachments,
     share_message: report.shareMessage,
-    // Database column is bigint (milliseconds), so we pass the number directly
     created_at: report.createdAt
   };
 };
@@ -78,7 +81,8 @@ const mapFromDb = (row: any): DailyReport => {
   const cleanSources = rawSources.filter((s: string) => 
     typeof s === 'string' && 
     !s.startsWith('device:') && 
-    !s.startsWith('user:')
+    !s.startsWith('user:') &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
   ) as SourceType[];
 
   return {
@@ -103,12 +107,23 @@ export const loadReports = async (): Promise<DailyReport[]> => {
   const deviceId = getDeviceId();
   const userId = await getCurrentUserId();
   
-  // Fetch recent reports
-  const { data, error } = await supabase
-    .from('daily_reports')
-    .select('*')
+  let query = supabase.from('daily_reports').select('*');
+
+  // SERVER-SIDE FILTERING:
+  // We use the .contains() operator on the 'sources' array column.
+  // This ensures we only fetch records that actually belong to the current user or device.
+  if (userId) {
+    // If authenticated, fetch reports where 'sources' contains the user ID.
+    // Note: Standard Supabase .contains for arrays requires an array as argument.
+    query = query.contains('sources', [userId]);
+  } else {
+    // If guest, fetch reports where 'sources' contains the current device ID.
+    query = query.contains('sources', [`device:${deviceId}`]);
+  }
+
+  const { data, error } = await query
     .order('created_at', { ascending: false })
-    .limit(200);
+    .limit(500); // Increased limit since results are now pre-filtered
 
   if (error) {
     console.error('Error loading reports:', error.message, error.details || '');
@@ -117,28 +132,7 @@ export const loadReports = async (): Promise<DailyReport[]> => {
 
   if (!data) return [];
 
-  // ISOLATION LOGIC:
-  // If User Logged In -> Show only reports with matching user:${userId}
-  // If Guest -> Show only reports with matching device:${deviceId}
-  
-  return data.filter(row => {
-    let sources: string[] = [];
-    if (Array.isArray(row.sources)) {
-      sources = row.sources;
-    } else if (typeof row.sources === 'string') {
-      try { sources = JSON.parse(row.sources); } catch {}
-    }
-    
-    if (!Array.isArray(sources)) return false;
-
-    if (userId) {
-      // Authenticated Mode: Strict User Isolation
-      return sources.includes(`user:${userId}`);
-    } else {
-      // Guest Mode: Device Isolation
-      return sources.includes(`device:${deviceId}`);
-    }
-  }).map(row => {
+  return data.map(row => {
     try {
       return mapFromDb(row);
     } catch (e) {
@@ -149,23 +143,21 @@ export const loadReports = async (): Promise<DailyReport[]> => {
 };
 
 export const saveReport = async (report: DailyReport): Promise<void> => {
-  // Security Checks
   const dangerousPatterns = /javascript:|vbscript:|data:|file:/i;
   if (dangerousPatterns.test(report.shareMessage)) throw new Error("Security Error: Unsafe content.");
   if (report.items.some(i => i.notes && dangerousPatterns.test(i.notes))) throw new Error("Security Error: Unsafe content.");
 
-  const payload = await mapToDb(report); // Now async
+  const payload = await mapToDb(report);
   
   const jsonSize = JSON.stringify(payload).length;
   if (jsonSize > 1000000) throw new Error("Report too large (max 1MB).");
 
   const { error } = await supabase
     .from('daily_reports')
-    .upsert(payload);
+    .upsert(payload, { onConflict: 'report_id' });
 
   if (error) {
     console.error('Error saving report:', error.message);
-    // Handle Row Level Security errors gracefully
     if (error.message.includes('row-level security') || error.message.includes('policy')) {
        throw new Error("Access Denied: You may need to sign in or you do not have permission to save this report.");
     }
