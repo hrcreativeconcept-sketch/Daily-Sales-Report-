@@ -19,8 +19,8 @@ const ITEM_SCHEMA = {
 };
 
 const SYSTEM_INSTRUCTION = `
-You are an advanced AI assistant for a mobile sales app, specialized in OCR and data extraction.
-Extract sales items from inputs (images, text, or audio).
+You are an advanced AI assistant for a mobile sales app, specialized in OCR and data extraction for sales reports.
+Extract sales items from inputs (images of receipts, spoken descriptions, or pasted text).
 
 Extraction Rules:
 1. Target fields: productName, sku, quantity (number), unitPrice (number), currency, notes.
@@ -30,19 +30,20 @@ Extraction Rules:
    - "five thousand" -> 5000
    - "seven units" -> quantity: 7
 3. Normalize Units: Map unit markers like "pieces", "units", "qty", "packs", "boxes", "sets" directly to the 'quantity' field.
-   - Example: "I sold ten pieces of item X" -> { productName: "item X", quantity: 10 }
-4. Self-Correction handling: If the user corrects themselves (e.g., "Sold 2... no, 5 pieces"), use the final intended value.
+4. Self-Correction: If a user corrects themselves (e.g., "Sold 2... no, 5 pieces"), use the final intended value.
 5. Confidence: Set 'lowConfidence: true' if the input is ambiguous, the recording is unclear, or values are guessed.
 
-Handle natural speech like "I just sold ten units of the screen protector for forty five dirhams each".
+If the input is an image of a receipt or log:
+- Look for columns with numbers (quantity, price).
+- Extract item descriptions carefully.
 `;
 
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: `Extract sales items from: ${text}`,
+      model: "gemini-3-flash-preview",
+      contents: `Extract sales items from the following text: "${text}"`,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
@@ -60,11 +61,11 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Extract all items, quantities, and prices from this image." }
+          { text: "Extract all sales items, their quantities, and their individual unit prices from this image. Output JSON." }
         ]
       },
       config: {
@@ -84,11 +85,11 @@ export const parseFromAudio = async (base64Audio: string, mimeType: string = 'au
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           { inlineData: { mimeType: mimeType, data: base64Audio } },
-          { text: "Listen and extract the list of sold items. Be strict about normalizing spoken numbers (like 'one twenty') and unit keywords (like 'pieces') into numeric quantities." }
+          { text: "Listen to this audio recording of a sales rep and extract the list of sold items. Normalize all spoken numbers to digits. Output JSON." }
         ]
       },
       config: {
