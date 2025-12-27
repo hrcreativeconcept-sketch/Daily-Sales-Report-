@@ -1,4 +1,3 @@
-
 import { DailyReport, AppConfig, SalesItem, SourceType } from '../types';
 import { LOCAL_STORAGE_KEYS } from '../constants';
 import { supabase } from './supabaseClient';
@@ -109,13 +108,10 @@ export const loadReports = async (): Promise<DailyReport[]> => {
   
   let query = supabase.from('daily_reports').select('*');
 
-  // Use explicit array containment filtering. 
-  // Passing an array to .contains() is the most robust way to handle both jsonb and text[] columns in Supabase.
-  if (userId) {
-    query = query.contains('sources', [userId]);
-  } else {
-    query = query.contains('sources', [`device:${deviceId}`]);
-  }
+  // Fix: Explicitly use JSON string for array containment queries on jsonb columns
+  // This prevents 'invalid input syntax for type json' by ensuring the value is sent as a JSON array string
+  const targetId = userId || `device:${deviceId}`;
+  query = query.filter('sources', 'cs', JSON.stringify([targetId]));
 
   const { data, error } = await query
     .order('created_at', { ascending: false })
@@ -190,8 +186,8 @@ export const uploadFile = async (file: File): Promise<string | null> => {
 
 export const saveOcrLog = async (imageUrl: string, analysis: SalesItem[]): Promise<void> => {
   const { error } = await supabase
-    .from('reports')
-    .insert({ image_url: imageUrl, analysis: JSON.stringify(analysis) });
+    .from('daily_reports')
+    .insert({ attachments: [{ type: 'image', url: imageUrl }], items: analysis, share_message: 'OCR Log Entry' });
   if (error) console.warn('Error logging OCR:', error.message);
 };
 
