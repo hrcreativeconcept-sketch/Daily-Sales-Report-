@@ -1,11 +1,10 @@
-
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Dashboard from './pages/Dashboard';
-import ReportEditor from './pages/ReportEditor';
-import SharePage from './pages/SharePage';
-import TestPage from './pages/TestPage';
-import Welcome from './pages/Welcome';
+import Dashboard from './pages/Dashboard.tsx';
+import ReportEditor from './pages/ReportEditor.tsx';
+import SharePage from './pages/SharePage.tsx';
+import TestPage from './pages/TestPage.tsx';
+import Welcome from './pages/Welcome.tsx';
 
 // Component to handle initial redirect based on whether user has seen intro
 const RootRedirect: React.FC = () => {
