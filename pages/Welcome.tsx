@@ -9,7 +9,11 @@ const Welcome: React.FC = () => {
 
   const handleComplete = () => {
     // Set flag so user isn't redirected here again automatically
-    localStorage.setItem('dsr_intro_shown', 'true');
+    try {
+      localStorage.setItem('dsr_intro_shown', 'true');
+    } catch (e) {
+      console.warn("Failed to save welcome state to localStorage", e);
+    }
     navigate('/');
   };
 

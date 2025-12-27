@@ -9,7 +9,13 @@ import Welcome from './pages/Welcome';
 
 // Component to handle initial redirect based on whether user has seen intro
 const RootRedirect: React.FC = () => {
-  const hasSeenIntro = localStorage.getItem('dsr_intro_shown') === 'true';
+  let hasSeenIntro = false;
+  try {
+    hasSeenIntro = localStorage.getItem('dsr_intro_shown') === 'true';
+  } catch (e) {
+    console.warn("localStorage access denied", e);
+  }
+  
   return hasSeenIntro ? <Dashboard /> : <Navigate to="/welcome" replace />;
 };
 

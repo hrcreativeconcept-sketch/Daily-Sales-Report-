@@ -11,15 +11,11 @@ interface State {
   error: Error | null;
 }
 
-/**
- * ErrorBoundary catches JavaScript errors anywhere in their child component tree,
- * logs those errors, and displays a fallback UI instead of the component tree that crashed.
- * Fix: Explicitly using named Component import and destructuring this.props to resolve type recognition issues.
- */
+// Explicitly extend Component from react to ensure 'props' and 'state' are correctly recognized by the TypeScript compiler
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
   };
 
   public static getDerivedStateFromError(error: Error): State {
@@ -27,15 +23,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("Uncaught error:", error, errorInfo);
+    console.error("ErrorBoundary caught an error", error, errorInfo);
   }
 
   public render() {
-    // Destructuring state and props ensures the TypeScript compiler correctly identifies the members of the Component base class.
-    const { hasError, error } = this.state;
-    const { children } = this.props;
-
-    if (hasError) {
+    if (this.state.hasError) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 text-center font-sans">
           <div className="bg-red-100 p-4 rounded-full mb-4">
@@ -47,7 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="w-full max-w-md bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 text-left overflow-hidden">
              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Error Details</p>
              <pre className="text-xs text-red-600 font-mono whitespace-pre-wrap break-words">
-               {error?.message || 'Unknown Error'}
+               {this.state.error?.message || 'Unknown Error'}
              </pre>
           </div>
 
@@ -62,6 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return children;
+    // Accessing children through this.props which is now properly typed via generic Component<Props, State>
+    return this.props.children;
   }
 }

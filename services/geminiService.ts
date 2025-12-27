@@ -1,9 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { SalesItem } from "../types";
-
-// Always use process.env.API_KEY directly for initialization.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const ITEM_SCHEMA = {
   type: Type.ARRAY,
@@ -25,26 +21,34 @@ const ITEM_SCHEMA = {
 const SYSTEM_INSTRUCTION = `
 You are an advanced AI assistant for a mobile sales app, specialized in OCR and data extraction.
 Extract sales items from inputs (images, text, or audio).
-Target fields: productName, sku, quantity (number), unitPrice (number), currency, notes.
-Apply corrections if mentioned. Handle diverse formats like "2x iPhone @ 1000".
-Set lowConfidence: true if extraction is uncertain.
+
+Extraction Rules:
+1. Target fields: productName, sku, quantity (number), unitPrice (number), currency, notes.
+2. Normalize Spoken Numerals: Always convert spoken number words into their numeric equivalents.
+   - "one twenty-eight" -> 128
+   - "three fifty" -> 3.50
+   - "five thousand" -> 5000
+   - "seven units" -> quantity: 7
+3. Normalize Units: Map unit markers like "pieces", "units", "qty", "packs", "boxes", "sets" directly to the 'quantity' field.
+   - Example: "I sold ten pieces of item X" -> { productName: "item X", quantity: 10 }
+4. Self-Correction handling: If the user corrects themselves (e.g., "Sold 2... no, 5 pieces"), use the final intended value.
+5. Confidence: Set 'lowConfidence: true' if the input is ambiguous, the recording is unclear, or values are guessed.
+
+Handle natural speech like "I just sold ten units of the screen protector for forty five dirhams each".
 `;
 
-// Complex reasoning tasks like structured data extraction use gemini-3-pro-preview.
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: {
-        parts: [{ text: `Extract sales items from: ${text}` }]
-      },
+      contents: `Extract sales items from: ${text}`,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
         responseSchema: ITEM_SCHEMA,
       },
     });
-    // Access .text property directly, do not call as a function.
     return JSON.parse(response.text || "[]");
   } catch (error) {
     console.error("Gemini Text Parse Error:", error);
@@ -52,8 +56,8 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   }
 };
 
-// Vision-based data extraction is complex; upgrading to gemini-3-pro-preview for better accuracy.
 export const parseFromFile = async (base64Data: string, mimeType: string): Promise<SalesItem[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
@@ -76,15 +80,15 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
   }
 };
 
-// Audio transcription and structured extraction are complex tasks, using gemini-3-pro-preview.
 export const parseFromAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<SalesItem[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: {
         parts: [
           { inlineData: { mimeType: mimeType, data: base64Audio } },
-          { text: "Listen and extract the list of sold items." }
+          { text: "Listen and extract the list of sold items. Be strict about normalizing spoken numbers (like 'one twenty') and unit keywords (like 'pieces') into numeric quantities." }
         ]
       },
       config: {
