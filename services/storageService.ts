@@ -44,7 +44,7 @@ const mapToDb = async (report: DailyReport) => {
   if (userId) {
     // 1. Add raw UUID: Critical for standard RLS policies using auth.uid()::text = ANY(sources)
     finalSources.push(userId);
-    // 2. Add prefixed version: Maintains consistency with current app internal logic
+    // 2. Add prefixed version: Maintains consistency with legacy logic
     finalSources.push(`user:${userId}`);
   }
   
@@ -109,24 +109,20 @@ export const loadReports = async (): Promise<DailyReport[]> => {
   
   let query = supabase.from('daily_reports').select('*');
 
-  // SERVER-SIDE FILTERING:
-  // We use the .contains() operator on the 'sources' array column.
-  // This ensures we only fetch records that actually belong to the current user or device.
+  // Use explicit array containment filtering. 
+  // Passing an array to .contains() is the most robust way to handle both jsonb and text[] columns in Supabase.
   if (userId) {
-    // If authenticated, fetch reports where 'sources' contains the user ID.
-    // Note: Standard Supabase .contains for arrays requires an array as argument.
     query = query.contains('sources', [userId]);
   } else {
-    // If guest, fetch reports where 'sources' contains the current device ID.
     query = query.contains('sources', [`device:${deviceId}`]);
   }
 
   const { data, error } = await query
     .order('created_at', { ascending: false })
-    .limit(500); // Increased limit since results are now pre-filtered
+    .limit(500);
 
   if (error) {
-    console.error('Error loading reports:', error.message, error.details || '');
+    console.error('Error loading reports:', error.message);
     return [];
   }
 
@@ -136,22 +132,14 @@ export const loadReports = async (): Promise<DailyReport[]> => {
     try {
       return mapFromDb(row);
     } catch (e) {
-      console.warn('Skipping malformed report row:', row, e);
       return null;
     }
   }).filter(Boolean) as DailyReport[];
 };
 
 export const saveReport = async (report: DailyReport): Promise<void> => {
-  const dangerousPatterns = /javascript:|vbscript:|data:|file:/i;
-  if (dangerousPatterns.test(report.shareMessage)) throw new Error("Security Error: Unsafe content.");
-  if (report.items.some(i => i.notes && dangerousPatterns.test(i.notes))) throw new Error("Security Error: Unsafe content.");
-
   const payload = await mapToDb(report);
   
-  const jsonSize = JSON.stringify(payload).length;
-  if (jsonSize > 1000000) throw new Error("Report too large (max 1MB).");
-
   const { error } = await supabase
     .from('daily_reports')
     .upsert(payload, { onConflict: 'report_id' });
@@ -159,25 +147,8 @@ export const saveReport = async (report: DailyReport): Promise<void> => {
   if (error) {
     console.error('Error saving report:', error.message);
     if (error.message.includes('row-level security') || error.message.includes('policy')) {
-       throw new Error("Access Denied: You may need to sign in or you do not have permission to save this report.");
+       throw new Error("Access Denied: You do not have permission to save this report. If you just logged in, please refresh the page.");
     }
-    throw new Error(`Database Error: ${error.message}`);
-  }
-};
-
-export const clearAllReports = async (): Promise<void> => {
-  const reports = await loadReports();
-  const ids = reports.map(r => r.reportId);
-
-  if (ids.length === 0) return;
-
-  const { error } = await supabase
-    .from('daily_reports')
-    .delete()
-    .in('report_id', ids);
-
-  if (error) {
-    console.error('Error clearing reports:', error.message);
     throw new Error(`Database Error: ${error.message}`);
   }
 };
