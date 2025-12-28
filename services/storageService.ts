@@ -1,3 +1,4 @@
+
 import { DailyReport, AppConfig, SalesItem, SourceType } from '../types';
 import { LOCAL_STORAGE_KEYS } from '../constants';
 import { supabase } from './supabaseClient';
@@ -98,11 +99,13 @@ export const loadReports = async (): Promise<DailyReport[]> => {
     const userId = await getCurrentUserId();
     const targetId = userId || `device:${deviceId}`;
     
-    // Standard .contains works for both jsonb and text[] array types in Supabase
+    // Fix: Using manual 'cs' (contains) filter with JSON stringified array.
+    // This resolves 'invalid input syntax for type json' errors on jsonb columns
+    // by ensuring the containment value is a JSON-formatted string.
     const { data, error } = await supabase
       .from('daily_reports')
       .select('*')
-      .contains('sources', [targetId])
+      .filter('sources', 'cs', JSON.stringify([targetId]))
       .order('created_at', { ascending: false })
       .limit(200);
 
