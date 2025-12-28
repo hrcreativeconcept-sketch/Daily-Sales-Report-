@@ -81,7 +81,7 @@ const mapFromDb = (row: any): DailyReport => {
     typeof s === 'string' && 
     !s.startsWith('device:') && 
     !s.startsWith('user:') &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
   ) as SourceType[];
 
   return {
@@ -108,10 +108,11 @@ export const loadReports = async (): Promise<DailyReport[]> => {
   
   let query = supabase.from('daily_reports').select('*');
 
-  // Fix: Explicitly use JSON string for array containment queries on jsonb columns
-  // This prevents 'invalid input syntax for type json' by ensuring the value is sent as a JSON array string
+  // Fix: Use the built-in .contains() method. 
+  // Passing an array [targetId] allows the Supabase client to correctly format the filter
+  // regardless of whether the column is text[] or jsonb.
   const targetId = userId || `device:${deviceId}`;
-  query = query.filter('sources', 'cs', JSON.stringify([targetId]));
+  query = query.contains('sources', [targetId]);
 
   const { data, error } = await query
     .order('created_at', { ascending: false })
@@ -185,9 +186,23 @@ export const uploadFile = async (file: File): Promise<string | null> => {
 };
 
 export const saveOcrLog = async (imageUrl: string, analysis: SalesItem[]): Promise<void> => {
+  const deviceId = getDeviceId();
+  const userId = await getCurrentUserId();
+  const targetId = userId || `device:${deviceId}`;
+  
+  // Fix: Ensure we provide a valid report structure to avoid schema constraint failures
   const { error } = await supabase
     .from('daily_reports')
-    .insert({ attachments: [{ type: 'image', url: imageUrl }], items: analysis, share_message: 'OCR Log Entry' });
+    .insert({ 
+      report_id: generateId(),
+      store_name: 'OCR Activity Log',
+      sales_rep_name: 'System',
+      attachments: [{ type: 'image', url: imageUrl }], 
+      items: analysis, 
+      sources: [targetId, 'ocr'],
+      share_message: 'OCR Log Entry',
+      created_at: Date.now()
+    });
   if (error) console.warn('Error logging OCR:', error.message);
 };
 
