@@ -29,21 +29,14 @@ const mapToDb = async (report: DailyReport) => {
   const cleanSources = report.sources.filter(s => 
     !s.startsWith('device:') && 
     !s.startsWith('user:') &&
-    // Also filter out any raw UUIDs that might have been saved previously
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
   );
   
-  // Explicitly cast to string[] to allow adding internal tags
   const finalSources: string[] = [...cleanSources];
-  
-  // Always add device ID for audit/tracking
   finalSources.push(`device:${deviceId}`);
   
-  // If user is logged in, add user ID
   if (userId) {
-    // 1. Add raw UUID: Critical for standard RLS policies using auth.uid()::text = ANY(sources)
     finalSources.push(userId);
-    // 2. Add prefixed version: Maintains consistency with legacy logic
     finalSources.push(`user:${userId}`);
   }
   
@@ -63,10 +56,8 @@ const mapToDb = async (report: DailyReport) => {
   };
 };
 
-// Helper to map snake_case (DB) to camelCase (App)
 const mapFromDb = (row: any): DailyReport => {
   let rawSources: any[] = [];
-  
   if (Array.isArray(row.sources)) {
     rawSources = row.sources;
   } else if (typeof row.sources === 'string') {
@@ -76,12 +67,11 @@ const mapFromDb = (row: any): DailyReport => {
     } catch (e) { }
   }
 
-  // Filter out internal isolation tags so they don't clutter UI
   const cleanSources = rawSources.filter((s: string) => 
     typeof s === 'string' && 
     !s.startsWith('device:') && 
     !s.startsWith('user:') &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
   ) as SourceType[];
 
   return {
@@ -103,49 +93,38 @@ const mapFromDb = (row: any): DailyReport => {
 };
 
 export const loadReports = async (): Promise<DailyReport[]> => {
-  const deviceId = getDeviceId();
-  const userId = await getCurrentUserId();
-  
-  let query = supabase.from('daily_reports').select('*');
+  try {
+    const deviceId = getDeviceId();
+    const userId = await getCurrentUserId();
+    const targetId = userId || `device:${deviceId}`;
+    
+    // Standard .contains works for both jsonb and text[] array types in Supabase
+    const { data, error } = await supabase
+      .from('daily_reports')
+      .select('*')
+      .contains('sources', [targetId])
+      .order('created_at', { ascending: false })
+      .limit(200);
 
-  // Fix: Explicitly use JSON string for array containment queries on jsonb columns
-  // This prevents 'invalid input syntax for type json' by ensuring the value is sent as a JSON array string ["id"]
-  // rather than the Postgres array literal {id} which is what .contains() sends by default.
-  const targetId = userId || `device:${deviceId}`;
-  query = query.filter('sources', 'cs', JSON.stringify([targetId]));
+    if (error) {
+      console.error('Database query error:', error.message);
+      return [];
+    }
 
-  const { data, error } = await query
-    .order('created_at', { ascending: false })
-    .limit(500);
-
-  if (error) {
-    console.error('Error loading reports:', error.message);
+    return (data || []).map(mapFromDb);
+  } catch (err) {
+    console.error('Critical error in loadReports:', err);
     return [];
   }
-
-  if (!data) return [];
-
-  return data.map(row => {
-    try {
-      return mapFromDb(row);
-    } catch (e) {
-      return null;
-    }
-  }).filter(Boolean) as DailyReport[];
 };
 
 export const saveReport = async (report: DailyReport): Promise<void> => {
   const payload = await mapToDb(report);
-  
   const { error } = await supabase
     .from('daily_reports')
     .upsert(payload, { onConflict: 'report_id' });
 
   if (error) {
-    console.error('Error saving report:', error.message);
-    if (error.message.includes('row-level security') || error.message.includes('policy')) {
-       throw new Error("Access Denied: You do not have permission to save this report. If you just logged in, please refresh the page.");
-    }
     throw new Error(`Database Error: ${error.message}`);
   }
 };
@@ -177,7 +156,6 @@ export const uploadFile = async (file: File): Promise<string | null> => {
     const fileName = `${Date.now()}_${generateId()}.${fileExt}`;
     const { data, error } = await supabase.storage.from('uploads').upload(fileName, file);
     if (error) return null;
-    if (!data?.path) return null;
     const { data: { publicUrl } } = supabase.storage.from('uploads').getPublicUrl(data.path);
     return publicUrl;
   } catch (e) {
@@ -190,20 +168,20 @@ export const saveOcrLog = async (imageUrl: string, analysis: SalesItem[]): Promi
   const userId = await getCurrentUserId();
   const targetId = userId || `device:${deviceId}`;
   
-  // Fix: Ensure we provide a valid report structure to avoid schema constraint failures
   const { error } = await supabase
     .from('daily_reports')
     .insert({ 
       report_id: generateId(),
-      store_name: 'OCR Activity Log',
+      store_name: 'OCR Log',
       sales_rep_name: 'System',
       attachments: [{ type: 'image', url: imageUrl }], 
       items: analysis, 
       sources: [targetId, 'ocr'],
-      share_message: 'OCR Log Entry',
-      created_at: Date.now()
+      share_message: 'OCR log entry created automatically.',
+      created_at: Date.now(),
+      totals: { gross: 0, discounts: 0, net: 0 } // Default totals for constraints
     });
-  if (error) console.warn('Error logging OCR:', error.message);
+  if (error) console.warn('OCR Log sync failed:', error.message);
 };
 
 export const saveConfig = (config: AppConfig) => {

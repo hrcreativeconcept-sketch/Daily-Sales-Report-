@@ -25,21 +25,20 @@ Extract sales items from inputs (images of receipts, spoken descriptions, or pas
 Extraction Rules:
 1. Target fields: productName, sku, quantity (number), unitPrice (number), currency, notes.
 2. Normalize Spoken Numerals: Always convert spoken number words into their numeric equivalents.
-   - "one twenty-eight" -> 128
-   - "three fifty" -> 3.50
-   - "five thousand" -> 5000
-   - "seven units" -> quantity: 7
-3. Normalize Units: Map unit markers like "pieces", "units", "qty", "packs", "boxes", "sets" directly to the 'quantity' field.
-4. Self-Correction: If a user corrects themselves (e.g., "Sold 2... no, 5 pieces"), use the final intended value.
-5. Confidence: Set 'lowConfidence: true' if the input is ambiguous, the recording is unclear, or values are guessed.
-
-If the input is an image of a receipt or log:
-- Look for columns with numbers (quantity, price).
-- Extract item descriptions carefully.
+3. Normalize Units: Map unit markers like "pieces", "units", "qty" to the 'quantity' field.
+4. Self-Correction: Use the final intended value if user corrects themselves.
+5. Confidence: Set 'lowConfidence: true' if the input is ambiguous.
 `;
 
+const getAIClient = () => {
+  if (!process.env.API_KEY) {
+    throw new Error("Gemini API Key is missing. Please configure your environment variables.");
+  }
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
+
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -58,7 +57,7 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
 };
 
 export const parseFromFile = async (base64Data: string, mimeType: string): Promise<SalesItem[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -82,14 +81,14 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
 };
 
 export const parseFromAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<SalesItem[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = getAIClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
         parts: [
           { inlineData: { mimeType: mimeType, data: base64Audio } },
-          { text: "Listen to this audio recording of a sales rep and extract the list of sold items. Normalize all spoken numbers to digits. Output JSON." }
+          { text: "Listen to this audio and extract the list of sold items. Normalize numbers. Output JSON." }
         ]
       },
       config: {
