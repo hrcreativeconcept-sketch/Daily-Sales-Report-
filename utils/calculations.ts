@@ -31,19 +31,34 @@ export const computeTotals = (items: SalesItem[], discounts: number = 0): Totals
   return { gross, discounts, net };
 };
 
+/**
+ * Robust currency formatter that prevents crashes on invalid ISO codes.
+ */
 export const formatCurrency = (amount: number, currency = 'AED') => {
-  // Ensure thousands separators and 2 decimal places (e.g., AED 1,234.50)
-  return new Intl.NumberFormat('en-GB', { 
-    style: 'currency', 
-    currency: currency, 
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2
-  }).format(amount);
+  // 1. Sanitize and provide default
+  let code = (currency || 'AED').trim().toUpperCase();
+  
+  // 2. Strict ISO 4217 validation (3 letters)
+  // If invalid, fallback to AED to ensure Intl doesn't throw
+  if (!/^[A-Z]{3}$/.test(code)) {
+    code = 'AED';
+  }
+
+  try {
+    return new Intl.NumberFormat('en-GB', { 
+      style: 'currency', 
+      currency: code, 
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2
+    }).format(amount);
+  } catch (e) {
+    // 3. Last resort fallback for legacy environments or extreme edge cases
+    return `${code} ${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
 };
 
 export const buildShareMessage = (report: DailyReport): string => {
   // 1. Format Date: 30-Nov-2025
-  // Parse string manually to avoid timezone shifts (e.g. T00:00 -> previous day)
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   let dateFormatted = report.dateLocal;
   
@@ -61,9 +76,6 @@ export const buildShareMessage = (report: DailyReport): string => {
   } catch (e) {}
 
   // 2. Build Header
-  // Dubai Hill Mall
-  // 30-Nov-2025 
-  // Sale Report
   let message = `${report.storeName}\n${dateFormatted} \n\nSale Report`;
   
   if (report.salesRepName) {
@@ -73,7 +85,6 @@ export const buildShareMessage = (report: DailyReport): string => {
   message += `\n`;
 
   // 3. Build Item List
-  // 1. 1 Iphone Screen Protector 80 AED
   report.items.forEach((item, index) => {
     const lineTotal = item.quantity * item.unitPrice;
     
@@ -87,7 +98,6 @@ export const buildShareMessage = (report: DailyReport): string => {
   });
 
   // 4. Build Footer
-  // Total: 300 AED
   const netTotal = report.totals.net % 1 === 0 
     ? report.totals.net.toString() 
     : report.totals.net.toFixed(2);
@@ -98,7 +108,6 @@ export const buildShareMessage = (report: DailyReport): string => {
 };
 
 export const generateId = () => {
-  // Fallback for environments where crypto.randomUUID is not available (non-HTTPS or older browsers)
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -109,21 +118,13 @@ export const generateId = () => {
   });
 };
 
-/**
- * Splits sales items into two lists based on a target ratio (e.g., 0.6 for 60/40).
- * Uses a greedy approach to minimize deviation from the target value for the first set.
- */
 export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[], SalesItem[]] => {
-  // 1. Flatten all items into single units to allow granular splitting
   const units: { item: SalesItem; price: number }[] = [];
   let totalUnits = 0;
-  
-  // Safety cap to prevent browser hang on massive quantities
   const MAX_UNITS = 2000;
 
   for (const item of items) {
     if (totalUnits >= MAX_UNITS) break;
-    // Don't flatten huge quantities completely if we are already near limit
     const qtyToFlatten = Math.min(item.quantity, MAX_UNITS - totalUnits);
     
     for (let i = 0; i < qtyToFlatten; i++) {
@@ -132,7 +133,6 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
     }
   }
 
-  // 2. Sort units by price descending (Greedy strategy works best with largest items first)
   units.sort((a, b) => b.price - a.price);
 
   const totalValue = units.reduce((sum, u) => sum + u.price, 0);
@@ -142,14 +142,10 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
   const unitsB: typeof units = [];
   let currentSumA = 0;
 
-  // 3. Allocate
   units.forEach(unit => {
-     // Check if adding this unit to A brings us closer to target or overshoots it too much
-     // We compare the absolute difference from target if we add it vs if we don't.
      const distIfAdd = Math.abs((currentSumA + unit.price) - targetValueA);
      const distIfSkip = Math.abs(currentSumA - targetValueA);
      
-     // Note: If sums are equal, we default to A to fill it up first (greedy) 
      if (distIfAdd <= distIfSkip) {
          unitsA.push(unit);
          currentSumA += unit.price;
@@ -158,11 +154,9 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
      }
   });
 
-  // 4. Re-merge identical items back into clean lists
   const merge = (uList: typeof units) => {
       const merged: SalesItem[] = [];
       uList.forEach(u => {
-          // Find existing item with same properties to increment quantity
           const existing = merged.find(m => 
             m.productName === u.item.productName && 
             m.unitPrice === u.item.unitPrice && 
@@ -173,7 +167,7 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
           if (existing) {
               existing.quantity += 1;
           } else {
-              merged.push({ ...u.item }); // Clone to avoid ref issues
+              merged.push({ ...u.item });
           }
       });
       return merged;
