@@ -30,15 +30,20 @@ Extraction Rules:
 5. Confidence: Set 'lowConfidence: true' if the input is ambiguous.
 `;
 
-const getAIClient = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("Gemini API Key is missing. Please configure your environment variables.");
+/**
+ * Creates a new instance of the Gemini AI client using the current API key from environment variables.
+ * Initializing per-call ensures it picks up the correct key even if it changes during the session.
+ */
+const getClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing. Please ensure process.env.API_KEY is configured.");
   }
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return new GoogleGenAI({ apiKey });
 };
 
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
-  const ai = getAIClient();
+  const ai = getClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -49,7 +54,10 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
         responseSchema: ITEM_SCHEMA,
       },
     });
-    return JSON.parse(response.text || "[]");
+    
+    const content = response.text;
+    if (!content) return [];
+    return JSON.parse(content);
   } catch (error) {
     console.error("Gemini Text Parse Error:", error);
     throw error;
@@ -57,7 +65,7 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
 };
 
 export const parseFromFile = async (base64Data: string, mimeType: string): Promise<SalesItem[]> => {
-  const ai = getAIClient();
+  const ai = getClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -73,7 +81,10 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
         responseSchema: ITEM_SCHEMA,
       },
     });
-    return JSON.parse(response.text || "[]");
+    
+    const content = response.text;
+    if (!content) return [];
+    return JSON.parse(content);
   } catch (error) {
     console.error("Gemini File Parse Error:", error);
     throw error;
@@ -81,7 +92,7 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
 };
 
 export const parseFromAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<SalesItem[]> => {
-  const ai = getAIClient();
+  const ai = getClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -97,7 +108,10 @@ export const parseFromAudio = async (base64Audio: string, mimeType: string = 'au
         responseSchema: ITEM_SCHEMA,
       },
     });
-    return JSON.parse(response.text || "[]");
+    
+    const content = response.text;
+    if (!content) return [];
+    return JSON.parse(content);
   } catch (error) {
     console.error("Gemini Audio Parse Error:", error);
     throw error;

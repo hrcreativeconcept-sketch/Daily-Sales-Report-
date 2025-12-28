@@ -1,5 +1,5 @@
 
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -13,11 +13,12 @@ interface State {
 
 /**
  * ErrorBoundary catches runtime errors in the component tree and displays a fallback UI.
- * Explicitly extending React.Component ensures 'props' and 'state' are correctly typed and accessible.
+ * Explicitly extending Component with Props and State ensures 'this.props' and 'this.state' 
+ * are correctly identified by the TypeScript compiler.
  */
-export class ErrorBoundary extends React.Component<Props, State> {
+export class ErrorBoundary extends Component<Props, State> {
   // Define initial state
-  public state: State = {
+  public override state: State = {
     hasError: false,
     error: null,
   };
@@ -28,12 +29,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   // Log error information
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error", error, errorInfo);
   }
 
-  public render() {
-    if (this.state.hasError) {
+  public override render() {
+    // Destructuring state and props for cleaner access and better type inference
+    const { hasError, error } = this.state;
+    const { children } = this.props;
+
+    if (hasError) {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 text-center font-sans">
           <div className="bg-red-100 p-4 rounded-full mb-4">
@@ -45,7 +50,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <div className="w-full max-w-md bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 text-left overflow-hidden">
              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Error Details</p>
              <pre className="text-xs text-red-600 font-mono whitespace-pre-wrap break-words">
-               {this.state.error?.message || 'Unknown Error'}
+               {error?.message || 'Unknown Error'}
              </pre>
           </div>
 
@@ -60,7 +65,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Accessing children through this.props which is now properly typed
-    return this.props.children;
+    // Accessing children through destructured props
+    return children;
   }
 }
