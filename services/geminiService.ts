@@ -31,19 +31,41 @@ Extraction Rules:
 `;
 
 /**
- * Creates a new instance of the Gemini AI client using the current API key from environment variables.
- * Initializing per-call ensures it picks up the correct key even if it changes during the session.
+ * Checks for API key availability and prompts user if necessary (in AI Studio context).
  */
-const getClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("Gemini API Key is missing. Please ensure process.env.API_KEY is configured.");
+export const ensureApiKey = async (): Promise<boolean> => {
+  if (process.env.API_KEY) return true;
+  
+  // If in AI Studio / Managed environment
+  if (window.aistudio) {
+    const hasKey = await window.aistudio.hasSelectedApiKey();
+    if (!hasKey) {
+      await window.aistudio.openSelectKey();
+      // Assume success after opening dialog per instructions to avoid race conditions
+      return true;
+    }
+    return true;
   }
+  
+  return false;
+};
+
+/**
+ * Creates a new instance of the Gemini AI client using the current API key.
+ */
+const getClient = async () => {
+  const hasKey = await ensureApiKey();
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey || !hasKey) {
+    throw new Error("Gemini API Key is missing. Please select a key or configure process.env.API_KEY.");
+  }
+  
   return new GoogleGenAI({ apiKey });
 };
 
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
-  const ai = getClient();
+  const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -65,7 +87,7 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
 };
 
 export const parseFromFile = async (base64Data: string, mimeType: string): Promise<SalesItem[]> => {
-  const ai = getClient();
+  const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -92,7 +114,7 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
 };
 
 export const parseFromAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<SalesItem[]> => {
-  const ai = getClient();
+  const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",

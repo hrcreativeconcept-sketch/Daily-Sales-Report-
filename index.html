@@ -23,10 +23,8 @@
       window.process = window.process || { env: {} };
       window.process.env = window.process.env || {};
       window.process.env.NODE_ENV = window.process.env.NODE_ENV || "production";
-      // Only set API_KEY if it doesn't already exist to avoid blanking out the real key
-      if (typeof window.process.env.API_KEY === 'undefined') {
-        window.process.env.API_KEY = "";
-      }
+      
+      // Removed the empty string fallback to allow detection of missing keys in services
 
       tailwind.config = {
         theme: {

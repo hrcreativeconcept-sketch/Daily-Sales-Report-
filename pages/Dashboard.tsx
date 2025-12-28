@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check, User, UserCircle, Coffee, Settings } from 'lucide-react';
+import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check, User, UserCircle, Coffee, Settings, Key } from 'lucide-react';
 import { DailyReport } from '../types';
 import * as StorageService from '../services/storageService';
 import * as AuthService from '../services/authService';
+import * as GeminiService from '../services/geminiService';
 import { formatCurrency } from '../utils/calculations';
 import AuthModal from '../components/AuthModal';
 import SettingsModal from '../components/SettingsModal';
@@ -20,6 +20,7 @@ const Dashboard: React.FC = () => {
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('home');
+  const [hasKey, setHasKey] = useState(true);
   
   // Auth State
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -38,11 +39,15 @@ const Dashboard: React.FC = () => {
 
   const initData = async () => {
     setLoading(true);
-    // 1. Check Auth
+    // 1. Check Key Status
+    const keyOk = await GeminiService.ensureApiKey();
+    setHasKey(keyOk);
+
+    // 2. Check Auth
     const user = await AuthService.getCurrentUser();
     setCurrentUser(user);
     
-    // 2. Load Reports
+    // 3. Load Reports
     const data = await StorageService.loadReports();
     setReports(data);
     setLoading(false);
@@ -89,8 +94,14 @@ const Dashboard: React.FC = () => {
   };
   
   const handleConfigChange = () => {
-    // Reload logic if needed, but config is mostly for ReportEditor.
-    // Dashboard handles the loop internally via loadConfig() call inside interval.
+    // Reload logic if needed
+  };
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasKey(true);
+    }
   };
 
   // --- Selection Logic ---
@@ -218,7 +229,6 @@ const Dashboard: React.FC = () => {
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-10 pointer-events-none">
            <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl opacity-20"></div>
            <div className="absolute bottom-0 left-0 w-60 h-60 bg-brand-300 rounded-full blur-3xl opacity-20"></div>
-           <div className="absolute top-1/2 left-1/2 w-full h-32 bg-brand-400 blur-3xl opacity-10 -translate-x-1/2 -translate-y-1/2 rotate-12"></div>
         </div>
 
         <div className="relative z-10 flex justify-between items-start">
@@ -232,7 +242,15 @@ const Dashboard: React.FC = () => {
             </div>
             
             <div className="flex gap-2">
-              {/* Settings Button */}
+               {!hasKey && (
+                 <button 
+                  onClick={handleOpenKeySelector}
+                  className="p-2 rounded-full transition-all active:scale-95 shadow-sm border bg-amber-500 text-white animate-pulse"
+                  title="Configure Gemini Key"
+                >
+                   <Key size={22} />
+                </button>
+               )}
                <button 
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2 rounded-full transition-all active:scale-95 shadow-sm border bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
@@ -280,39 +298,31 @@ const Dashboard: React.FC = () => {
             >
               <Filter size={20} />
             </button>
-            {hasFilters && (
-                <button type="button" onClick={resetFilters} className="p-3.5 bg-brand-800 hover:bg-brand-900 rounded-2xl flex items-center justify-center transition-colors shadow-sm active:scale-95">
-                    <RefreshCw size={20} className="text-white"/>
-                </button>
-            )}
           </div>
-        )}
-
-        {viewMode === 'history' && showFilters && !isSelectionMode && (
-            <div className="mt-4 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
-                <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-brand-200 ml-2 tracking-wider">From Date</label>
-                    <input 
-                        type="date" 
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-xl py-2.5 px-3 text-white text-sm focus:outline-none focus:bg-white/20 transition-colors" 
-                    />
-                </div>
-                <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-brand-200 ml-2 tracking-wider">To Date</label>
-                    <input 
-                        type="date" 
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-xl py-2.5 px-3 text-white text-sm focus:outline-none focus:bg-white/20 transition-colors" 
-                    />
-                </div>
-            </div>
         )}
       </header>
 
       <div className="px-5 -mt-6 relative z-20">
+        {!hasKey && (
+          <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl mb-6 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
+                <Key size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-amber-900">Gemini Key Missing</p>
+                <p className="text-xs text-amber-700">AI features require an API key.</p>
+              </div>
+            </div>
+            <button 
+              onClick={handleOpenKeySelector}
+              className="bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-amber-600/20 active:scale-95 transition-all"
+            >
+              Fix Now
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <div className="bg-white p-10 rounded-2xl shadow-lg border border-gray-100 flex flex-col items-center justify-center animate-in fade-in duration-500">
              <Loader2 size={36} className="text-brand-500 animate-spin mb-3"/>
@@ -336,7 +346,6 @@ const Dashboard: React.FC = () => {
                       const isLast = i === last7Days.length - 1;
                       return (
                         <div key={r.reportId} className="flex flex-col items-center gap-2 flex-1 h-full justify-end group cursor-default">
-                           {/* Bar */}
                            <div 
                               className={`w-full max-w-[24px] sm:max-w-[32px] rounded-t-lg transition-all duration-700 ease-out relative ${
                                 isLast 
@@ -345,13 +354,7 @@ const Dashboard: React.FC = () => {
                               }`}
                               style={{ height: `${heightPct}%` }}
                            >
-                              {/* Tooltip */}
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0 whitespace-nowrap z-10 pointer-events-none shadow-xl">
-                                {formatCurrency(r.totals.net)}
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
-                              </div>
                            </div>
-                           {/* Label */}
                            <span className={`text-[10px] font-bold ${isLast ? 'text-brand-600' : 'text-gray-400'}`}>
                              {r.dateLocal.slice(5)}
                            </span>
@@ -380,14 +383,11 @@ const Dashboard: React.FC = () => {
                            <span className="text-gray-400 text-xs font-medium bg-gray-50 px-2 py-1 rounded-md">{mostRecentReport.timeLocal}</span>
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-1 line-clamp-1">{mostRecentReport.storeName}</h3>
-                        
                         <p className="text-xs text-gray-500 mb-4">{mostRecentReport.items.length} items recorded</p>
-                        
                         <div className="flex items-end justify-between border-t border-gray-50 pt-4">
                               <div className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-brand-800">
                                   {formatCurrency(mostRecentReport.totals.net)}
                               </div>
-                           
                            <div className="h-8 w-8 bg-brand-50 rounded-full flex items-center justify-center text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-all shadow-sm">
                              <ChevronRight size={18} />
                            </div>
@@ -447,7 +447,6 @@ const Dashboard: React.FC = () => {
                             {isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
                           </div>
                         )}
-                        
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1.5">
                             <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded text-gray-600 shadow-sm">
@@ -478,7 +477,6 @@ const Dashboard: React.FC = () => {
 
       {/* Floating Bottom Action Bar */}
       <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-50">
-        
         {isSelectionMode ? (
            <div className="flex gap-3 animate-in slide-in-from-bottom-6 duration-300">
               <button 
@@ -504,7 +502,6 @@ const Dashboard: React.FC = () => {
                <div 
                  className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full shadow-sm transition-all duration-300 ease-out ${viewMode === 'home' ? 'left-1' : 'left-[calc(50%+2px)]'}`}
                ></div>
-               
                <button 
                   type="button"
                   onClick={() => setViewMode('home')}
@@ -520,7 +517,6 @@ const Dashboard: React.FC = () => {
                   <History size={20} />
                </button>
             </div>
-
             <button 
               type="button"
               onClick={() => navigate('/new')}

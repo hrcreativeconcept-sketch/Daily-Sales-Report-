@@ -1,3 +1,4 @@
+
 import { DailyReport, AppConfig, SalesItem, SourceType } from '../types';
 import { LOCAL_STORAGE_KEYS } from '../constants';
 import { supabase } from './supabaseClient';
@@ -46,6 +47,7 @@ const mapToDb = async (report: DailyReport) => {
     time_local: report.timeLocal,
     timezone: report.timezone,
     store_name: report.storeName,
+    // Fix: Using correct property name salesRepName from DailyReport interface
     sales_rep_name: report.salesRepName,
     items: report.items,
     totals: report.totals,
@@ -98,12 +100,11 @@ export const loadReports = async (): Promise<DailyReport[]> => {
     const userId = await getCurrentUserId();
     const targetId = userId || `device:${deviceId}`;
     
-    // Use .contains() which is the recommended way to query jsonb arrays in Supabase JS v2
-    // It correctly handles the internal Postgres containment syntax (@>).
+    // Using .filter with JSONB containment 'cs' (contains) for maximum compatibility
     const { data, error } = await supabase
       .from('daily_reports')
       .select('*')
-      .contains('sources', [targetId])
+      .filter('sources', 'cs', JSON.stringify([targetId]))
       .order('created_at', { ascending: false })
       .limit(200);
 
