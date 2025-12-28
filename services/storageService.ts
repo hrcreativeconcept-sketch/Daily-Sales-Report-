@@ -108,11 +108,11 @@ export const loadReports = async (): Promise<DailyReport[]> => {
   
   let query = supabase.from('daily_reports').select('*');
 
-  // Fix: Use the built-in .contains() method. 
-  // Passing an array [targetId] allows the Supabase client to correctly format the filter
-  // regardless of whether the column is text[] or jsonb.
+  // Fix: Explicitly use JSON string for array containment queries on jsonb columns
+  // This prevents 'invalid input syntax for type json' by ensuring the value is sent as a JSON array string ["id"]
+  // rather than the Postgres array literal {id} which is what .contains() sends by default.
   const targetId = userId || `device:${deviceId}`;
-  query = query.contains('sources', [targetId]);
+  query = query.filter('sources', 'cs', JSON.stringify([targetId]));
 
   const { data, error } = await query
     .order('created_at', { ascending: false })
