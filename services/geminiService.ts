@@ -31,37 +31,74 @@ Extraction Rules:
 `;
 
 /**
- * Checks for API key availability and prompts user if necessary (in AI Studio context).
+ * Checks if a valid API key is available in the environment.
+ */
+export const hasValidKey = (): boolean => {
+  const key = process.env.API_KEY;
+  return !!(key && key.length > 5 && key !== "undefined" && key !== "null");
+};
+
+/**
+ * Ensures an API key is selected. In AI Studio, this opens the picker.
  */
 export const ensureApiKey = async (): Promise<boolean> => {
-  if (process.env.API_KEY) return true;
-  
-  // If in AI Studio / Managed environment
+  if (hasValidKey()) return true;
+
   if (window.aistudio) {
-    const hasKey = await window.aistudio.hasSelectedApiKey();
-    if (!hasKey) {
-      await window.aistudio.openSelectKey();
-      // Assume success after opening dialog per instructions to avoid race conditions
-      return true;
-    }
-    return true;
+    const hasSelected = await window.aistudio.hasSelectedApiKey();
+    if (hasSelected) return true;
+    
+    // If not selected, we return false so the UI can prompt
+    return false;
   }
   
   return false;
 };
 
 /**
- * Creates a new instance of the Gemini AI client using the current API key.
+ * Triggers the native API key selection dialog.
+ */
+export const requestKeySelection = async () => {
+  if (window.aistudio) {
+    await window.aistudio.openSelectKey();
+    // Per instructions: assume success after triggering to mitigate race conditions
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Creates a fresh instance of the Gemini AI client using the latest environment key.
  */
 const getClient = async () => {
-  const hasKey = await ensureApiKey();
+  // Always create a new instance right before use to pick up the latest injected key
   const apiKey = process.env.API_KEY;
   
-  if (!apiKey || !hasKey) {
-    throw new Error("Gemini API Key is missing. Please select a key or configure process.env.API_KEY.");
+  if (!apiKey || apiKey.length < 5 || apiKey === "undefined" || apiKey === "null") {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      // Proceed immediately assuming selection worked (race condition mitigation)
+      return new GoogleGenAI({ apiKey: process.env.API_KEY });
+    }
+    throw new Error("Gemini API Key is missing. Please ensure process.env.API_KEY is configured.");
   }
   
   return new GoogleGenAI({ apiKey });
+};
+
+/**
+ * Handles common API errors, specifically re-triggering key selection on 404s.
+ */
+const handleApiError = async (error: any) => {
+  console.error("Gemini API Error:", error);
+  const message = error?.message || "";
+  
+  // If requested entity was not found, reset key selection state
+  if (message.includes("Requested entity was not found") && window.aistudio) {
+    await window.aistudio.openSelectKey();
+  }
+  
+  throw error;
 };
 
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
@@ -81,8 +118,7 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
     if (!content) return [];
     return JSON.parse(content);
   } catch (error) {
-    console.error("Gemini Text Parse Error:", error);
-    throw error;
+    return handleApiError(error);
   }
 };
 
@@ -108,8 +144,7 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
     if (!content) return [];
     return JSON.parse(content);
   } catch (error) {
-    console.error("Gemini File Parse Error:", error);
-    throw error;
+    return handleApiError(error);
   }
 };
 
@@ -135,7 +170,6 @@ export const parseFromAudio = async (base64Audio: string, mimeType: string = 'au
     if (!content) return [];
     return JSON.parse(content);
   } catch (error) {
-    console.error("Gemini Audio Parse Error:", error);
-    throw error;
+    return handleApiError(error);
   }
 };

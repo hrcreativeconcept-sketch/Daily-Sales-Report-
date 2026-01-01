@@ -13,13 +13,10 @@ interface State {
 
 /**
  * ErrorBoundary catches runtime errors in the component tree and displays a fallback UI.
- * Explicitly extending React.Component with Props and State ensures 'this.props' and 'this.state' 
- * are correctly identified by the TypeScript compiler.
  */
-// Fix: Use React.Component to provide proper context for props and state
+// Explicitly extending React.Component<Props, State> ensures 'this.props' and 'this.state' are correctly identified by the TypeScript compiler.
 export class ErrorBoundary extends React.Component<Props, State> {
   // Define initial state
-  // Fix: Removed 'override' modifier as property overriding is not supported in this environment
   public state: State = {
     hasError: false,
     error: null,
@@ -31,15 +28,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   // Log error information
-  // Fix: Removed 'override' modifier as method overriding is failing detection in this environment
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error", error, errorInfo);
   }
 
-  // Fix: Removed 'override' modifier
   public render() {
-    // Destructuring state and props for cleaner access and better type inference
-    // Fix: this.props and this.state are now accessible through React.Component inheritance
+    // Standard access to state and props from the Component base class.
     const { hasError, error } = this.state;
     const { children } = this.props;
 
@@ -70,7 +64,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Accessing children through destructured props
     return children;
   }
 }

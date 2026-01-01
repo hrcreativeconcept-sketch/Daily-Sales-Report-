@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check, User, UserCircle, Coffee, Settings, Key } from 'lucide-react';
+import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, RefreshCw, History, LayoutDashboard, Loader2, Trash2, CheckSquare, X, Check, User, UserCircle, Coffee, Settings, Key, AlertCircle } from 'lucide-react';
 import { DailyReport } from '../types';
 import * as StorageService from '../services/storageService';
 import * as AuthService from '../services/authService';
@@ -37,11 +37,14 @@ const Dashboard: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const initData = async () => {
+  const initData = async (checkKey = true) => {
     setLoading(true);
-    // 1. Check Key Status
-    const keyOk = await GeminiService.ensureApiKey();
-    setHasKey(keyOk);
+    
+    // 1. Check Key Status (Non-blocking)
+    if (checkKey) {
+      const keyOk = await GeminiService.ensureApiKey();
+      setHasKey(keyOk);
+    }
 
     // 2. Check Auth
     const user = await AuthService.getCurrentUser();
@@ -56,6 +59,14 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     initData();
     
+    // Polling check for API Key injection to ensure UI stays in sync if key is added later
+    const keyInterval = setInterval(async () => {
+      const currentStatus = GeminiService.hasValidKey();
+      if (currentStatus !== hasKey) {
+        setHasKey(currentStatus);
+      }
+    }, 2000);
+
     // Reminder Check Logic
     const checkReminder = () => {
       const config = StorageService.loadConfig();
@@ -73,7 +84,7 @@ const Dashboard: React.FC = () => {
            if ('Notification' in window && Notification.permission === 'granted') {
              new Notification("Daily Sales Reminder", { 
                body: "Time to post your daily sales report!",
-               icon: '/vite.svg' // Fallback icon
+               icon: '/vite.svg' 
              });
              localStorage.setItem('dsr_last_reminder_date', today);
            }
@@ -81,16 +92,17 @@ const Dashboard: React.FC = () => {
       }
     };
 
-    // Check every minute
-    const interval = setInterval(checkReminder, 60000);
-    // Initial check
+    const reminderInterval = setInterval(checkReminder, 60000);
     checkReminder();
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(keyInterval);
+      clearInterval(reminderInterval);
+    };
+  }, [hasKey]);
 
   const handleAuthSuccess = async () => {
-    await initData();
+    await initData(false);
   };
   
   const handleConfigChange = () => {
@@ -98,9 +110,12 @@ const Dashboard: React.FC = () => {
   };
 
   const handleOpenKeySelector = async () => {
-    if (window.aistudio) {
-      await window.aistudio.openSelectKey();
+    const success = await GeminiService.requestKeySelection();
+    if (success) {
+      // Immediately update local state to unblock UI
       setHasKey(true);
+      // Wait a moment for environment variable injection and re-init
+      setTimeout(() => initData(true), 1500);
     }
   };
 
@@ -192,21 +207,13 @@ const Dashboard: React.FC = () => {
     return matchesSearch && matchesStart && matchesEnd;
   }).sort((a, b) => b.dateLocal.localeCompare(a.dateLocal) || b.createdAt - a.createdAt);
 
+  const hasFilters = searchTerm !== '' || startDate !== '' || endDate !== '';
+
   const mostRecentReport = [...reports].sort((a, b) => b.createdAt - a.createdAt)[0];
   
-  // Custom Chart Logic
   const sortedForChart = [...reports].sort((a, b) => a.dateLocal.localeCompare(b.dateLocal));
   const last7Days = sortedForChart.slice(-7);
   const maxVal = Math.max(...last7Days.map(r => r.totals.net), 1);
-
-  const resetFilters = () => {
-    setSearchTerm('');
-    setStartDate('');
-    setEndDate('');
-    setShowFilters(false);
-  };
-
-  const hasFilters = searchTerm || startDate || endDate;
 
   return (
     <div className="min-h-screen bg-gray-50/50 pb-32 font-sans">
@@ -304,21 +311,21 @@ const Dashboard: React.FC = () => {
 
       <div className="px-5 -mt-6 relative z-20">
         {!hasKey && (
-          <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl mb-6 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500 flex items-center justify-between">
+          <div className="bg-white border border-amber-200 p-4 rounded-2xl mb-6 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500 flex items-center justify-between ring-4 ring-amber-50">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
-                <Key size={20} />
+                <AlertCircle size={20} />
               </div>
               <div>
-                <p className="text-sm font-bold text-amber-900">Gemini Key Missing</p>
-                <p className="text-xs text-amber-700">AI features require an API key.</p>
+                <p className="text-sm font-bold text-amber-900">AI Features Disabled</p>
+                <p className="text-[10px] text-amber-600 font-medium">Please select an API Key to enable OCR & Speech extraction.</p>
               </div>
             </div>
             <button 
               onClick={handleOpenKeySelector}
               className="bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-amber-600/20 active:scale-95 transition-all"
             >
-              Fix Now
+              Select Key
             </button>
           </div>
         )}
