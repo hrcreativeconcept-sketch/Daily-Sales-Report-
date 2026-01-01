@@ -79,15 +79,17 @@ const Dashboard: React.FC = () => {
     try {
       const isAistudio = typeof window !== 'undefined' && window.aistudio;
       if (isAistudio) {
-        await GeminiService.requestKeySelection();
-        setHasKey(true); // Assume success to unblock UI
-        setTimeout(() => initData(true), 2000); // Reload data once key is likely active
+        const result = await GeminiService.requestKeySelection();
+        if (result) {
+          setHasKey(true); // Assume success to unblock UI immediately
+          setTimeout(() => initData(true), 1500);
+        }
       } else {
-        alert("This app requires a Gemini API Key to use AI features. In this environment, please ensure process.env.API_KEY is configured.");
+        alert("This app requires a Gemini API Key to use AI features. In this environment, please ensure your host configuration provides process.env.API_KEY.");
       }
     } catch (err) {
       console.error("Key selection failed:", err);
-      alert("Failed to open key selector. Please try clicking the key icon in the header.");
+      alert("Failed to open key selector. Please try clicking the key icon in the top header.");
     }
   };
 
@@ -165,30 +167,31 @@ const Dashboard: React.FC = () => {
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} user={currentUser} onAuthSuccess={() => initData(false)} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onConfigChange={() => {}} user={currentUser} />
 
-      {/* API KEY WARNING BANNER - Moved to top, high priority visibility */}
+      {/* API KEY WARNING BANNER - Fixed with highest priority visibility and clickability */}
       {!hasKey && (
-        <div className="bg-amber-600 text-white px-4 py-4 flex flex-col gap-3 sticky top-0 z-[100] shadow-lg animate-in slide-in-from-top duration-300">
-           <div className="flex items-center justify-between">
+        <div 
+          onClick={handleOpenKeySelector}
+          className="bg-amber-600 text-white px-4 py-4 flex flex-col gap-2 sticky top-0 z-[9999] shadow-lg animate-in slide-in-from-top duration-300 cursor-pointer active:bg-amber-700"
+        >
+           <div className="flex items-center justify-between pointer-events-none">
              <div className="flex items-center gap-3">
-               <AlertCircle size={20} className="shrink-0" />
+               <AlertCircle size={24} className="shrink-0 text-amber-100" />
                <div>
-                 <p className="text-sm font-bold">AI Features Disabled</p>
-                 <p className="text-[10px] text-amber-100 font-medium">Please select a Gemini API key to enable OCR and Voice recording.</p>
+                 <p className="text-sm font-black uppercase tracking-tight">AI Features Paused</p>
+                 <p className="text-[10px] text-amber-100 font-bold">Tap here to select your Gemini API key</p>
                </div>
              </div>
-             <button 
-                onClick={handleOpenKeySelector}
-                className="bg-white text-amber-700 px-5 py-2 rounded-xl text-xs font-black shadow-lg active:scale-95 transition-all whitespace-nowrap"
-              >
+             <div className="bg-white text-amber-700 px-4 py-2 rounded-xl text-[10px] font-black shadow-lg">
                 SELECT KEY
-              </button>
+              </div>
            </div>
            <div className="flex justify-center border-t border-amber-500/50 pt-2">
              <a 
                href="https://ai.google.dev/gemini-api/docs/billing" 
                target="_blank" 
                rel="noopener noreferrer"
-               className="text-[9px] font-bold text-amber-100 flex items-center gap-1 hover:text-white transition-colors uppercase tracking-wider"
+               className="text-[9px] font-bold text-amber-200 flex items-center gap-1 hover:text-white transition-colors uppercase tracking-wider"
+               onClick={(e) => e.stopPropagation()} // Allow clicking this specific link
              >
                Billing Requirements <ExternalLink size={10} />
              </a>

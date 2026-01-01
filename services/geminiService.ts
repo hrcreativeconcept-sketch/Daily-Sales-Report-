@@ -32,10 +32,13 @@ Extraction Rules:
 
 /**
  * Checks if a valid API key is available in the environment.
+ * Handles cases where 'undefined' or 'null' strings are injected by build tools.
  */
 export const hasValidKey = (): boolean => {
   const key = process.env.API_KEY;
-  return !!(key && key.length > 5 && key !== "undefined" && key !== "null" && key !== "");
+  if (!key) return false;
+  const invalidStrings = ["undefined", "null", "", "false"];
+  return key.length > 5 && !invalidStrings.includes(key.toLowerCase());
 };
 
 /**
@@ -63,11 +66,11 @@ export const requestKeySelection = async (): Promise<boolean> => {
   if (typeof window !== 'undefined' && window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
     try {
       await window.aistudio.openSelectKey();
-      // Per instructions: assume success after triggering to mitigate race conditions
+      // Per instructions: proceed immediately assuming success to mitigate race conditions
       return true;
     } catch (e) {
       console.error("Failed to open key selector:", e);
-      throw e;
+      return false;
     }
   }
   return false;
@@ -77,18 +80,14 @@ export const requestKeySelection = async (): Promise<boolean> => {
  * Creates a fresh instance of the Gemini AI client using the latest environment key.
  */
 const getClient = async () => {
-  const apiKey = process.env.API_KEY;
-  
-  if (!apiKey || apiKey.length < 5 || apiKey === "undefined" || apiKey === "null") {
-    if (typeof window !== 'undefined' && window.aistudio) {
-      await window.aistudio.openSelectKey();
-      // Use latest injected key immediately
-      return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  if (!hasValidKey()) {
+    const success = await requestKeySelection();
+    if (!success) {
+      throw new Error("Gemini API Key is missing. Please click 'Select Key' in the dashboard.");
     }
-    throw new Error("Gemini API Key is missing. Please click 'Select Key' in the app dashboard.");
   }
   
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY! });
 };
 
 /**

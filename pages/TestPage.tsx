@@ -11,6 +11,17 @@ const TestPage: React.FC = () => {
 
   const addLog = (msg: string) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev]);
 
+  const testApiKey = () => {
+    const key = process.env.API_KEY;
+    const isValid = GeminiService.hasValidKey();
+    addLog(`Key Present: ${!!key}`);
+    addLog(`Key Value (Redacted): ${key ? key.substring(0, 4) + '...' + key.substring(key.length - 4) : 'NONE'}`);
+    addLog(`Valid Detection: ${isValid}`);
+    if (!isValid && typeof window !== 'undefined' && window.aistudio) {
+      addLog("Recommendation: Click 'Select Key' on Dashboard to trigger picker.");
+    }
+  };
+
   const testTimezone = () => {
     const { tz, dateLocal, timeLocal } = CalculationUtils.getLocalDateTimeAndTimezone();
     addLog(`Timezone: ${tz}, Local: ${dateLocal} ${timeLocal}`);
@@ -60,6 +71,9 @@ const TestPage: React.FC = () => {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <button onClick={testApiKey} className="bg-white p-4 rounded-lg shadow text-left hover:bg-gray-50 border border-amber-200 font-bold text-amber-700">
+          Check API Key Status
+        </button>
         <button onClick={testTimezone} className="bg-white p-4 rounded-lg shadow text-left hover:bg-gray-50 border border-gray-200 font-medium">
           Test Local Time & Timezone
         </button>
