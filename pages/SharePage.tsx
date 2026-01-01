@@ -1,21 +1,24 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Copy, ArrowLeft, MessageCircle, Loader2 } from 'lucide-react';
+import { Copy, ArrowLeft, MessageCircle, Loader2, Volume2, VolumeX } from 'lucide-react';
 import * as StorageService from '../services/storageService';
 import { DailyReport } from '../types';
+import * as GeminiService from '../services/geminiService';
+import * as AudioUtils from '../utils/audioUtils';
 
 const SharePage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Use state if provided by router (optimistic), otherwise null
   const [report, setReport] = useState<DailyReport | null | undefined>(location.state?.report || null);
   const [loading, setLoading] = useState(!location.state?.report);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
 
   useEffect(() => {
-    // If we already have report data from navigation state, skip fetch
     if (report) return;
 
     const fetchReport = async () => {
@@ -30,7 +33,55 @@ const SharePage: React.FC = () => {
       setLoading(false);
     };
     fetchReport();
+
+    return () => {
+      stopSpeech();
+    };
   }, [id, report]);
+
+  const stopSpeech = () => {
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.stop(); } catch (e) {}
+      sourceNodeRef.current = null;
+    }
+    setIsSpeaking(false);
+  };
+
+  const handleTTS = async () => {
+    if (isSpeaking) {
+      stopSpeech();
+      return;
+    }
+
+    if (!report?.shareMessage) return;
+
+    setIsSpeaking(true);
+    try {
+      const base64Audio = await GeminiService.generateSpeech(report.shareMessage);
+      if (!base64Audio) {
+        setIsSpeaking(false);
+        return;
+      }
+
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      
+      const ctx = audioContextRef.current;
+      const audioBuffer = await AudioUtils.decodeAudioData(AudioUtils.decode(base64Audio), ctx);
+      
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      source.onended = () => setIsSpeaking(false);
+      
+      sourceNodeRef.current = source;
+      source.start();
+    } catch (e) {
+      console.error("TTS failed", e);
+      setIsSpeaking(false);
+    }
+  };
 
   if (loading) {
     return <div className="p-8 text-center text-gray-500 flex flex-col items-center justify-center min-h-screen"><Loader2 className="animate-spin mb-3 text-brand-600" size={32} />Loading report...</div>;
@@ -49,7 +100,6 @@ const SharePage: React.FC = () => {
 
   const handleCopy = () => {
     navigator.clipboard.writeText(report.shareMessage);
-    // Simple visual feedback could be added here
   };
 
   const handleWhatsApp = () => {
@@ -70,7 +120,22 @@ const SharePage: React.FC = () => {
         
         <div className="w-full bg-white p-6 rounded-2xl shadow-lg border border-brand-100 mb-8 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-green-500 to-brand-500"></div>
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Message Preview</h2>
+          
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Message Preview</h2>
+            <button 
+              onClick={handleTTS}
+              className={`p-2 rounded-full transition-all active:scale-95 ${
+                isSpeaking 
+                  ? 'bg-red-100 text-red-600 animate-pulse' 
+                  : 'bg-brand-50 text-brand-600 hover:bg-brand-100'
+              }`}
+              title={isSpeaking ? "Stop" : "Listen to report"}
+            >
+              {isSpeaking ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            </button>
+          </div>
+
           <div className="bg-green-50 p-4 rounded-xl border border-green-100 max-h-[50vh] overflow-y-auto no-scrollbar">
             <p className="text-base font-medium text-gray-800 leading-relaxed font-sans whitespace-pre-wrap">
               {report.shareMessage}

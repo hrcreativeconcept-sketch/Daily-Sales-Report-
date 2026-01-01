@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { SalesItem } from "../types";
 
 const ITEM_SCHEMA = {
@@ -35,7 +35,6 @@ Extraction Rules:
  */
 export const hasValidKey = (): boolean => {
   const key = process.env.API_KEY;
-  // Handle falsy values and common string representations of missing values
   return !!(key && key.length > 5 && key !== "undefined" && key !== "null" && key !== "");
 };
 
@@ -45,13 +44,13 @@ export const hasValidKey = (): boolean => {
 export const ensureApiKey = async (): Promise<boolean> => {
   if (hasValidKey()) return true;
 
-  if (typeof window !== 'undefined' && window.aistudio) {
-    try {
+  try {
+    if (typeof window !== 'undefined' && window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
       const hasSelected = await window.aistudio.hasSelectedApiKey();
-      if (hasSelected) return true;
-    } catch (e) {
-      console.warn("Error checking for selected API key:", e);
+      return !!hasSelected;
     }
+  } catch (e) {
+    console.warn("Key check failed:", e);
   }
   
   return false;
@@ -61,17 +60,16 @@ export const ensureApiKey = async (): Promise<boolean> => {
  * Triggers the native API key selection dialog.
  */
 export const requestKeySelection = async (): Promise<boolean> => {
-  if (typeof window !== 'undefined' && window.aistudio) {
+  if (typeof window !== 'undefined' && window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
     try {
       await window.aistudio.openSelectKey();
       // Per instructions: assume success after triggering to mitigate race conditions
       return true;
     } catch (e) {
       console.error("Failed to open key selector:", e);
-      return false;
+      throw e;
     }
   }
-  console.warn("AI Studio key selector not available in this environment.");
   return false;
 };
 
@@ -79,16 +77,15 @@ export const requestKeySelection = async (): Promise<boolean> => {
  * Creates a fresh instance of the Gemini AI client using the latest environment key.
  */
 const getClient = async () => {
-  // Always check env directly right before use to catch injected keys
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey.length < 5 || apiKey === "undefined" || apiKey === "null") {
     if (typeof window !== 'undefined' && window.aistudio) {
       await window.aistudio.openSelectKey();
-      // Proceed immediately assuming selection worked (race condition mitigation)
+      // Use latest injected key immediately
       return new GoogleGenAI({ apiKey: process.env.API_KEY });
     }
-    throw new Error("Gemini API Key is missing. Please click 'Select Key' to enable AI features.");
+    throw new Error("Gemini API Key is missing. Please click 'Select Key' in the app dashboard.");
   }
   
   return new GoogleGenAI({ apiKey });
@@ -101,7 +98,6 @@ const handleApiError = async (error: any) => {
   console.error("Gemini API Error:", error);
   const message = error?.message || "";
   
-  // If requested entity was not found, reset key selection state
   if (message.includes("Requested entity was not found") && typeof window !== 'undefined' && window.aistudio) {
     await window.aistudio.openSelectKey();
   }
@@ -177,6 +173,32 @@ export const parseFromAudio = async (base64Audio: string, mimeType: string = 'au
     const content = response.text;
     if (!content) return [];
     return JSON.parse(content);
+  } catch (error) {
+    return handleApiError(error);
+  }
+};
+
+/**
+ * Transforms text into spoken audio using gemini-2.5-flash-preview-tts.
+ */
+export const generateSpeech = async (text: string): Promise<string | undefined> => {
+  const ai = await getClient();
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Kore' },
+          },
+        },
+      },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    return base64Audio;
   } catch (error) {
     return handleApiError(error);
   }
