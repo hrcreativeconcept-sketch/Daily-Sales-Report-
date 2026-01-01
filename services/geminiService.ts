@@ -6,67 +6,46 @@ const ITEM_SCHEMA = {
   items: {
     type: Type.OBJECT,
     properties: {
-      productName: { type: Type.STRING },
-      sku: { type: Type.STRING },
-      quantity: { type: Type.NUMBER },
-      unitPrice: { type: Type.NUMBER },
-      currency: { type: Type.STRING },
-      notes: { type: Type.STRING },
-      lowConfidence: { type: Type.BOOLEAN },
+      productName: { type: Type.STRING, description: "Name of the product sold" },
+      sku: { type: Type.STRING, description: "Stock keeping unit or model number" },
+      quantity: { type: Type.NUMBER, description: "Number of units sold" },
+      unitPrice: { type: Type.NUMBER, description: "Price per single unit" },
+      currency: { type: Type.STRING, description: "ISO Currency code" },
+      notes: { type: Type.STRING, description: "Any additional details or corrections" },
+      lowConfidence: { type: Type.BOOLEAN, description: "True if the data was blurry or unclear" },
     },
     required: ["productName", "quantity", "unitPrice"],
   },
 };
 
 const SYSTEM_INSTRUCTION = `
-You are an advanced AI assistant for a mobile sales app, specialized in OCR and data extraction for sales reports.
-Extract sales items from inputs (images of receipts, spoken descriptions, or pasted text).
-
-Extraction Rules:
-1. Target fields: productName, sku, quantity (number), unitPrice (number), currency, notes.
-2. Normalize Spoken Numerals: Always convert spoken number words into their numeric equivalents.
-3. Normalize Units: Map unit markers like "pieces", "units", "qty" to the 'quantity' field.
-4. Self-Correction: Use the final intended value if user corrects themselves.
-5. Confidence: Set 'lowConfidence: true' if the input is ambiguous.
+You are an expert sales data analyst. Extract structured sales records from unstructured input.
+Rules:
+1. Identify product names, quantities, and prices accurately.
+2. If the user mentions multiple items, extract all of them.
+3. If specific currencies are mentioned (AED, USD, SAR), preserve them.
+4. If an input is ambiguous, set lowConfidence to true for that item.
+5. For voice transcripts, ignore filler words and focus on the data.
 `;
 
 /**
  * Checks if a valid API key is available in the environment.
- * Handles cases where 'undefined' or 'null' strings are injected by build tools.
  */
 export const hasValidKey = (): boolean => {
   const key = process.env.API_KEY;
   if (!key) return false;
-  const invalidStrings = ["undefined", "null", "", "false"];
-  return key.length > 5 && !invalidStrings.includes(key.toLowerCase());
+  const invalidStrings = ["undefined", "null", "", "false", "0"];
+  return key.length > 10 && !invalidStrings.includes(key.toLowerCase());
 };
 
 /**
- * Ensures an API key is selected. In AI Studio, this opens the picker.
- */
-export const ensureApiKey = async (): Promise<boolean> => {
-  if (hasValidKey()) return true;
-
-  try {
-    if (typeof window !== 'undefined' && window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
-      const hasSelected = await window.aistudio.hasSelectedApiKey();
-      return !!hasSelected;
-    }
-  } catch (e) {
-    console.warn("Key check failed:", e);
-  }
-  
-  return false;
-};
-
-/**
- * Triggers the native API key selection dialog.
+ * Triggers the native API key selection dialog in AI Studio.
  */
 export const requestKeySelection = async (): Promise<boolean> => {
   if (typeof window !== 'undefined' && window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
     try {
       await window.aistudio.openSelectKey();
-      // Per instructions: proceed immediately assuming success to mitigate race conditions
+      // Per guidelines: proceed immediately as if successful to mitigate race conditions
       return true;
     } catch (e) {
       console.error("Failed to open key selector:", e);
@@ -77,31 +56,24 @@ export const requestKeySelection = async (): Promise<boolean> => {
 };
 
 /**
- * Creates a fresh instance of the Gemini AI client using the latest environment key.
+ * Ensures an API key is selected.
  */
-const getClient = async () => {
-  if (!hasValidKey()) {
-    const success = await requestKeySelection();
-    if (!success) {
-      throw new Error("Gemini API Key is missing. Please click 'Select Key' in the dashboard.");
+export const ensureApiKey = async (): Promise<boolean> => {
+  if (hasValidKey()) return true;
+  try {
+    if (typeof window !== 'undefined' && window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
+      return await window.aistudio.hasSelectedApiKey();
     }
-  }
-  
-  return new GoogleGenAI({ apiKey: process.env.API_KEY! });
+  } catch (e) {}
+  return false;
 };
 
 /**
- * Handles common API errors, specifically re-triggering key selection on 404s.
+ * Creates a fresh instance of the Gemini AI client.
  */
-const handleApiError = async (error: any) => {
-  console.error("Gemini API Error:", error);
-  const message = error?.message || "";
-  
-  if (message.includes("Requested entity was not found") && typeof window !== 'undefined' && window.aistudio) {
-    await window.aistudio.openSelectKey();
-  }
-  
-  throw error;
+const getClient = async () => {
+  // Always use a new instance to ensure we pick up the latest injected API_KEY
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
@@ -109,19 +81,19 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Extract sales items from the following text: "${text}"`,
+      contents: `Extract sales data from this text: "${text}"`,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
         responseSchema: ITEM_SCHEMA,
       },
     });
-    
-    const content = response.text;
-    if (!content) return [];
-    return JSON.parse(content);
-  } catch (error) {
-    return handleApiError(error);
+    return JSON.parse(response.text || "[]");
+  } catch (error: any) {
+    if (error.message?.includes("entity was not found") && window.aistudio) {
+      window.aistudio.openSelectKey();
+    }
+    throw error;
   }
 };
 
@@ -133,7 +105,7 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Extract all sales items, their quantities, and their individual unit prices from this image. Output JSON." }
+          { text: "List all sales items and their prices found in this image." }
         ]
       },
       config: {
@@ -142,12 +114,9 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
         responseSchema: ITEM_SCHEMA,
       },
     });
-    
-    const content = response.text;
-    if (!content) return [];
-    return JSON.parse(content);
-  } catch (error) {
-    return handleApiError(error);
+    return JSON.parse(response.text || "[]");
+  } catch (error: any) {
+    throw error;
   }
 };
 
@@ -158,8 +127,8 @@ export const parseFromAudio = async (base64Audio: string, mimeType: string = 'au
       model: "gemini-3-flash-preview",
       contents: {
         parts: [
-          { inlineData: { mimeType: mimeType, data: base64Audio } },
-          { text: "Listen to this audio and extract the list of sold items. Normalize numbers. Output JSON." }
+          { inlineData: { mimeType, data: base64Audio } },
+          { text: "Listen to this sales dictation and extract the items sold." }
         ]
       },
       config: {
@@ -168,18 +137,12 @@ export const parseFromAudio = async (base64Audio: string, mimeType: string = 'au
         responseSchema: ITEM_SCHEMA,
       },
     });
-    
-    const content = response.text;
-    if (!content) return [];
-    return JSON.parse(content);
-  } catch (error) {
-    return handleApiError(error);
+    return JSON.parse(response.text || "[]");
+  } catch (error: any) {
+    throw error;
   }
 };
 
-/**
- * Transforms text into spoken audio using gemini-2.5-flash-preview-tts.
- */
 export const generateSpeech = async (text: string): Promise<string | undefined> => {
   const ai = await getClient();
   try {
@@ -195,10 +158,9 @@ export const generateSpeech = async (text: string): Promise<string | undefined> 
         },
       },
     });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    return base64Audio;
-  } catch (error) {
-    return handleApiError(error);
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (error: any) {
+    console.error("Speech Gen Error:", error);
+    return undefined;
   }
 };
