@@ -35,7 +35,8 @@ Extraction Rules:
  */
 export const hasValidKey = (): boolean => {
   const key = process.env.API_KEY;
-  return !!(key && key.length > 5 && key !== "undefined" && key !== "null");
+  // Handle falsy values and common string representations of missing values
+  return !!(key && key.length > 5 && key !== "undefined" && key !== "null" && key !== "");
 };
 
 /**
@@ -44,12 +45,13 @@ export const hasValidKey = (): boolean => {
 export const ensureApiKey = async (): Promise<boolean> => {
   if (hasValidKey()) return true;
 
-  if (window.aistudio) {
-    const hasSelected = await window.aistudio.hasSelectedApiKey();
-    if (hasSelected) return true;
-    
-    // If not selected, we return false so the UI can prompt
-    return false;
+  if (typeof window !== 'undefined' && window.aistudio) {
+    try {
+      const hasSelected = await window.aistudio.hasSelectedApiKey();
+      if (hasSelected) return true;
+    } catch (e) {
+      console.warn("Error checking for selected API key:", e);
+    }
   }
   
   return false;
@@ -58,12 +60,18 @@ export const ensureApiKey = async (): Promise<boolean> => {
 /**
  * Triggers the native API key selection dialog.
  */
-export const requestKeySelection = async () => {
-  if (window.aistudio) {
-    await window.aistudio.openSelectKey();
-    // Per instructions: assume success after triggering to mitigate race conditions
-    return true;
+export const requestKeySelection = async (): Promise<boolean> => {
+  if (typeof window !== 'undefined' && window.aistudio) {
+    try {
+      await window.aistudio.openSelectKey();
+      // Per instructions: assume success after triggering to mitigate race conditions
+      return true;
+    } catch (e) {
+      console.error("Failed to open key selector:", e);
+      return false;
+    }
   }
+  console.warn("AI Studio key selector not available in this environment.");
   return false;
 };
 
@@ -71,16 +79,16 @@ export const requestKeySelection = async () => {
  * Creates a fresh instance of the Gemini AI client using the latest environment key.
  */
 const getClient = async () => {
-  // Always create a new instance right before use to pick up the latest injected key
+  // Always check env directly right before use to catch injected keys
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey.length < 5 || apiKey === "undefined" || apiKey === "null") {
-    if (window.aistudio) {
+    if (typeof window !== 'undefined' && window.aistudio) {
       await window.aistudio.openSelectKey();
       // Proceed immediately assuming selection worked (race condition mitigation)
       return new GoogleGenAI({ apiKey: process.env.API_KEY });
     }
-    throw new Error("Gemini API Key is missing. Please ensure process.env.API_KEY is configured.");
+    throw new Error("Gemini API Key is missing. Please click 'Select Key' to enable AI features.");
   }
   
   return new GoogleGenAI({ apiKey });
@@ -94,7 +102,7 @@ const handleApiError = async (error: any) => {
   const message = error?.message || "";
   
   // If requested entity was not found, reset key selection state
-  if (message.includes("Requested entity was not found") && window.aistudio) {
+  if (message.includes("Requested entity was not found") && typeof window !== 'undefined' && window.aistudio) {
     await window.aistudio.openSelectKey();
   }
   

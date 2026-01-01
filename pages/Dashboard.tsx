@@ -59,7 +59,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     initData();
     
-    // Polling check for API Key injection to ensure UI stays in sync if key is added later
+    // Polling check for API Key injection to ensure UI stays in sync
     const keyInterval = setInterval(async () => {
       const currentStatus = GeminiService.hasValidKey();
       if (currentStatus !== hasKey) {
@@ -109,13 +109,23 @@ const Dashboard: React.FC = () => {
     // Reload logic if needed
   };
 
-  const handleOpenKeySelector = async () => {
+  const handleOpenKeySelector = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.debug("Requesting API Key selection...");
     const success = await GeminiService.requestKeySelection();
+    
     if (success) {
       // Immediately update local state to unblock UI
       setHasKey(true);
       // Wait a moment for environment variable injection and re-init
       setTimeout(() => initData(true), 1500);
+    } else {
+      // Fallback alert for non-aistudio environments
+      alert("AI Key selector is not available in this browser window. Please check your environment variables.");
     }
   };
 
@@ -232,7 +242,7 @@ const Dashboard: React.FC = () => {
       />
 
       {/* Header Area */}
-      <header className={`bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl transition-all duration-300 relative overflow-hidden ${viewMode === 'history' ? 'pb-8' : ''}`}>
+      <header className={`bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl transition-all duration-300 relative overflow-hidden z-10 ${viewMode === 'history' ? 'pb-8' : ''}`}>
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-10 pointer-events-none">
            <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full blur-3xl opacity-20"></div>
            <div className="absolute bottom-0 left-0 w-60 h-60 bg-brand-300 rounded-full blur-3xl opacity-20"></div>
@@ -252,26 +262,26 @@ const Dashboard: React.FC = () => {
                {!hasKey && (
                  <button 
                   onClick={handleOpenKeySelector}
-                  className="p-2 rounded-full transition-all active:scale-95 shadow-sm border bg-amber-500 text-white animate-pulse"
+                  className="p-2.5 rounded-full transition-all active:scale-90 shadow-sm border bg-amber-500 text-white animate-pulse z-50"
                   title="Configure Gemini Key"
                 >
-                   <Key size={22} />
+                   <Key size={20} />
                 </button>
                )}
                <button 
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 rounded-full transition-all active:scale-95 shadow-sm border bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
+                className="p-2.5 rounded-full transition-all active:scale-95 shadow-sm border bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
                 title="Settings"
               >
-                 <Settings size={22} />
+                 <Settings size={20} />
               </button>
 
               <button 
                 onClick={() => setIsAuthModalOpen(true)}
-                className={`p-2 rounded-full transition-all active:scale-95 shadow-sm border ${currentUser ? 'bg-white text-brand-700 border-white' : 'bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20'}`}
+                className={`p-2.5 rounded-full transition-all active:scale-95 shadow-sm border ${currentUser ? 'bg-white text-brand-700 border-white' : 'bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20'}`}
                 title={currentUser ? "Account" : "Sign In"}
               >
-                 {currentUser ? <UserCircle size={24} /> : <User size={22} />}
+                 {currentUser ? <UserCircle size={22} /> : <User size={20} />}
               </button>
 
               {viewMode === 'history' && (
@@ -287,7 +297,7 @@ const Dashboard: React.FC = () => {
         </div>
         
         {viewMode === 'history' && !isSelectionMode && (
-          <div className="mt-8 flex gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="mt-8 flex gap-3 animate-in fade-in slide-in-from-top-4 duration-500 relative z-10">
             <div className="relative flex-1 group">
               <input 
                 type="text" 
@@ -309,21 +319,21 @@ const Dashboard: React.FC = () => {
         )}
       </header>
 
-      <div className="px-5 -mt-6 relative z-20">
+      <div className="px-5 pt-4 relative z-20">
         {!hasKey && (
-          <div className="bg-white border border-amber-200 p-4 rounded-2xl mb-6 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500 flex items-center justify-between ring-4 ring-amber-50">
+          <div className="bg-white border-2 border-amber-200 p-4 rounded-2xl mb-6 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500 flex items-center justify-between ring-4 ring-amber-50 relative z-50">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
                 <AlertCircle size={20} />
               </div>
               <div>
-                <p className="text-sm font-bold text-amber-900">AI Features Disabled</p>
-                <p className="text-[10px] text-amber-600 font-medium">Please select an API Key to enable OCR & Speech extraction.</p>
+                <p className="text-sm font-bold text-amber-900 leading-tight">AI Features Paused</p>
+                <p className="text-[10px] text-amber-600 font-medium mt-0.5">Key selection is required for OCR.</p>
               </div>
             </div>
             <button 
               onClick={handleOpenKeySelector}
-              className="bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-amber-600/20 active:scale-95 transition-all"
+              className="bg-amber-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-amber-600/20 active:scale-95 transition-all animate-pulse"
             >
               Select Key
             </button>
@@ -483,7 +493,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Floating Bottom Action Bar */}
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-50">
+      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-[60]">
         {isSelectionMode ? (
            <div className="flex gap-3 animate-in slide-in-from-bottom-6 duration-300">
               <button 
