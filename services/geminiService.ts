@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { SalesItem } from "../types";
 
@@ -76,11 +77,12 @@ const getClient = async () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
+// Use gemini-3-pro-preview for complex text task (sales data extraction)
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview",
       contents: `Extract sales data from this text: "${text}"`,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -97,11 +99,12 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   }
 };
 
+// Use gemini-3-pro-preview for complex multimodal task (extracting items from images)
 export const parseFromFile = async (base64Data: string, mimeType: string): Promise<SalesItem[]> => {
   const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview",
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -120,11 +123,12 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
   }
 };
 
+// Use gemini-3-pro-preview for complex task (extracting items from audio dictation)
 export const parseFromAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<SalesItem[]> => {
   const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview",
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Audio } },
