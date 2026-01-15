@@ -29,7 +29,9 @@ const getCurrentUserId = async (): Promise<string | null> => {
 const loadLocalReports = (): DailyReport[] => {
   try {
     const data = localStorage.getItem(LOCAL_STORAGE_KEYS.REPORTS);
-    return data ? JSON.parse(data) : [];
+    const parsed = data ? JSON.parse(data) : [];
+    // Filter out locally marked deleted reports
+    return parsed.filter((r: DailyReport) => !r.isDeleted);
   } catch (e) {
     return [];
   }
@@ -74,7 +76,8 @@ const mapToDb = async (report: DailyReport) => {
     sources: finalSources,
     attachments: report.attachments,
     share_message: report.shareMessage,
-    created_at: report.createdAt
+    created_at: report.createdAt,
+    is_deleted: report.isDeleted || false
   };
 };
 
@@ -110,7 +113,8 @@ const mapFromDb = (row: any): DailyReport => {
     shareMessage: row.share_message || '',
     createdAt: (typeof row.created_at === 'string' && row.created_at.includes('T'))
       ? new Date(row.created_at).getTime()
-      : parseInt(String(row.created_at || '0'), 10) || Date.now()
+      : parseInt(String(row.created_at || '0'), 10) || Date.now(),
+    isDeleted: row.is_deleted || false
   };
 };
 
@@ -129,6 +133,7 @@ export const loadReports = async (): Promise<DailyReport[]> => {
       .from('daily_reports')
       .select('*')
       .filter('sources', 'cs', JSON.stringify([targetId]))
+      .eq('is_deleted', false) // Only load active reports
       .order('created_at', { ascending: false })
       .limit(200);
 
@@ -175,31 +180,36 @@ export const saveReport = async (report: DailyReport): Promise<void> => {
     if (error) throw error;
   } catch (err) {
     console.warn("Could not sync to cloud, data remains locally.", err);
-    // Don't throw, we want the app to keep working locally
   }
 };
 
 export const deleteReports = async (ids: string[]): Promise<void> => {
-  // 1. Delete Locally
-  const local = loadLocalReports().filter(r => !ids.includes(r.reportId));
-  saveLocalReports(local);
+  // 1. Soft Delete Locally
+  const rawLocalData = localStorage.getItem(LOCAL_STORAGE_KEYS.REPORTS);
+  if (rawLocalData) {
+    const allReports: DailyReport[] = JSON.parse(rawLocalData);
+    const updatedReports = allReports.map(r => 
+      ids.includes(r.reportId) ? { ...r, isDeleted: true } : r
+    );
+    localStorage.setItem(LOCAL_STORAGE_KEYS.REPORTS, JSON.stringify(updatedReports));
+  }
 
-  // 2. Attempt Remote Delete
+  // 2. Attempt Remote Soft Delete (Mark as deleted)
   try {
     const { error } = await supabase
       .from('daily_reports')
-      .delete()
+      .update({ is_deleted: true }) // SOFT DELETE Logic
       .in('report_id', ids);
 
     if (error) throw error;
   } catch (err) {
-    console.warn("Could not sync delete to cloud.", err);
+    console.warn("Could not sync soft-delete to cloud.", err);
   }
 };
 
 export const getReportById = async (id: string): Promise<DailyReport | undefined> => {
   // Check Local first
-  const local = loadLocalReports().find(r => r.reportId === id);
+  const local = loadLocalReports().find(r => r.reportId === id && !r.isDeleted);
   if (local) return local;
 
   // Attempt Remote
@@ -208,6 +218,7 @@ export const getReportById = async (id: string): Promise<DailyReport | undefined
       .from('daily_reports')
       .select('*')
       .eq('report_id', id)
+      .eq('is_deleted', false)
       .single();
 
     if (error || !data) return undefined;
@@ -247,7 +258,8 @@ export const saveOcrLog = async (imageUrl: string, analysis: SalesItem[]): Promi
         sources: [targetId, 'ocr'],
         share_message: 'OCR log entry created automatically.',
         created_at: Date.now(),
-        totals: { gross: 0, discounts: 0, net: 0 } 
+        totals: { gross: 0, discounts: 0, net: 0 },
+        is_deleted: false 
       });
     if (error) console.warn('OCR Log sync failed:', error.message);
   } catch (e) {}

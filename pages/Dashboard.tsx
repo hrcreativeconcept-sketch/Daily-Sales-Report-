@@ -39,7 +39,8 @@ const Dashboard: React.FC = () => {
       StorageService.loadReports()
     ]);
     setCurrentUser(user);
-    setReports(data);
+    // Explicitly filter for non-deleted reports just in case
+    setReports(data.filter(r => !r.isDeleted));
     setLoading(false);
   };
 
@@ -72,8 +73,9 @@ const Dashboard: React.FC = () => {
     const reportsToDelete = reports.filter(r => r.dateLocal === date);
     const ids = reportsToDelete.map(r => r.reportId);
     
-    if (window.confirm(`Delete all ${ids.length} reports for ${date}? This cannot be undone.`)) {
+    if (window.confirm(`Hide all ${ids.length} reports for ${date}? You can recover them from archives later.`)) {
       await StorageService.deleteReports(ids);
+      // Remove from active view state
       setReports(prev => prev.filter(r => !ids.includes(r.reportId)));
     }
   };
@@ -291,7 +293,7 @@ const Dashboard: React.FC = () => {
                   ) : (
                     <div className="text-center py-20 bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
                       <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><FileText className="text-slate-300" size={32} /></div>
-                      <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">No sales recorded yet</p>
+                      <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">No active sales yet</p>
                     </div>
                   )}
                 </div>
@@ -317,6 +319,7 @@ const Dashboard: React.FC = () => {
                            <button 
                              onClick={(e) => { e.stopPropagation(); handleDeleteDay(date); }}
                              className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all active:scale-90"
+                             title="Hide records"
                            >
                              <Trash2 size={16} strokeWidth={2.5} />
                            </button>
@@ -332,7 +335,7 @@ const Dashboard: React.FC = () => {
                               <div className="flex-1 min-w-0 pr-4">
                                 <p className="text-[9px] text-slate-400 font-black uppercase mb-1 tracking-wider">{report.timeLocal}</p>
                                 <p className="text-sm font-bold text-slate-900 truncate group-hover:text-brand-600 transition-colors">{report.storeName}</p>
-                                <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{report.salesRepName}</p>
+                                <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{report.salesRepName || '—'}</p>
                               </div>
                               <div className="text-right">
                                 <span className="block text-base font-black text-slate-900 group-hover:text-brand-600 transition-colors">{formatCurrency(report.totals.net)}</span>

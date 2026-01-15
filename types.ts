@@ -36,6 +36,7 @@ export interface DailyReport {
   attachments: Attachment[];
   shareMessage: string;
   createdAt: number; // Timestamp for sorting
+  isDeleted?: boolean; // Soft delete flag
 }
 
 export interface AppConfig {
