@@ -1,5 +1,5 @@
 
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -14,8 +14,8 @@ interface State {
 /**
  * ErrorBoundary catches runtime errors in the component tree and displays a fallback UI.
  */
-// Explicitly use React.Component to ensure TypeScript correctly recognizes the 'props' and 'state' properties.
-export class ErrorBoundary extends React.Component<Props, State> {
+// Fix: Used Component from the React import to ensure generics for props and state are correctly identified.
+export class ErrorBoundary extends Component<Props, State> {
   // Use property initialization for state
   public state: State = {
     hasError: false,

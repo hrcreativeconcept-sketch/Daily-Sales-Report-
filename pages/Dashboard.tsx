@@ -1,11 +1,13 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, ChevronRight, FileText, TrendingUp, Calendar, Filter, History, LayoutDashboard, Loader2, Trash2, X, Check, User, UserCircle, Settings, Key, AlertCircle, ExternalLink, Sparkles } from 'lucide-react';
+import { Plus, Search, ChevronRight, FileText, TrendingUp, History, LayoutDashboard, Loader2, Settings, Key, ExternalLink, Sparkles, MapPin, MapPinned, X, UserCircle } from 'lucide-react';
 import { DailyReport } from '../types';
 import * as StorageService from '../services/storageService';
 import * as AuthService from '../services/authService';
 import * as GeminiService from '../services/geminiService';
 import { formatCurrency } from '../utils/calculations';
+import { MOCK_STORES, LOCAL_STORAGE_KEYS } from '../constants';
 import AuthModal from '../components/AuthModal';
 import SettingsModal from '../components/SettingsModal';
 
@@ -21,10 +23,8 @@ const Dashboard: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [activeStore, setActiveStore] = useState<string>(localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_STORE) || '');
 
   const initData = async (checkKey = true) => {
     setLoading(true);
@@ -54,6 +54,15 @@ const Dashboard: React.FC = () => {
     if (success) {
       setHasKey(true);
       setTimeout(() => initData(true), 1500);
+    }
+  };
+
+  const handleStoreChange = (store: string) => {
+    setActiveStore(store);
+    if (store) {
+      localStorage.setItem(LOCAL_STORAGE_KEYS.LAST_STORE, store);
+    } else {
+      localStorage.removeItem(LOCAL_STORAGE_KEYS.LAST_STORE);
     }
   };
 
@@ -90,16 +99,11 @@ const Dashboard: React.FC = () => {
               ACTIVATE
             </div>
           </div>
-          <div className="flex justify-center border-t border-amber-500/50 mt-2 pt-1.5">
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-[9px] font-bold text-amber-200 flex items-center gap-1 uppercase" onClick={e => e.stopPropagation()}>
-              Paid Account Required <ExternalLink size={10} />
-            </a>
-          </div>
         </div>
       )}
 
       <header className="bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl relative overflow-hidden z-10">
-        <div className="relative z-10 flex justify-between items-start">
+        <div className="relative z-10 flex justify-between items-start mb-6">
           <div>
             <h1 className="text-3xl font-extrabold mb-1 tracking-tight">Daily Sales</h1>
             <p className="text-brand-100 text-sm font-medium opacity-90">Store Analytics & Reports</p>
@@ -109,13 +113,38 @@ const Dashboard: React.FC = () => {
               <Settings size={20} />
             </button>
             <button onClick={() => setIsAuthModalOpen(true)} className={`p-2.5 rounded-full active:scale-95 transition-all border ${currentUser ? 'bg-white text-brand-700 border-white' : 'bg-white/10 backdrop-blur-md border-white/20 text-white'}`}>
-              {currentUser ? <UserCircle size={22} /> : <User size={20} />}
+              <UserCircle size={22} />
             </button>
           </div>
         </div>
 
+        {/* Global Store Selector */}
+        <div className="relative z-10 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-4 flex items-center gap-3 shadow-inner">
+           <div className={`p-2 rounded-lg ${activeStore ? 'bg-brand-400/30' : 'bg-red-400/20'}`}>
+              <MapPinned size={18} className={activeStore ? 'text-white' : 'text-red-200'} />
+           </div>
+           <div className="flex-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-brand-200 mb-0.5">Active Location</p>
+              <select 
+                value={activeStore}
+                onChange={(e) => handleStoreChange(e.target.value)}
+                className="w-full bg-transparent text-sm font-bold text-white outline-none appearance-none cursor-pointer"
+              >
+                <option value="" className="text-gray-900">Select Store...</option>
+                {MOCK_STORES.map(s => (
+                  <option key={s} value={s} className="text-gray-900">{s}</option>
+                ))}
+              </select>
+           </div>
+           {activeStore && (
+             <button onClick={() => handleStoreChange('')} className="p-1 text-white/50 hover:text-white transition-colors">
+               <X size={14} />
+             </button>
+           )}
+        </div>
+
         {viewMode === 'history' && (
-          <div className="mt-8 flex gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="mt-6 flex gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="relative flex-1">
               <input type="text" placeholder="Search stores..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white/10 border border-white/20 backdrop-blur-md rounded-2xl py-3.5 pl-11 pr-4 text-white placeholder-brand-200 focus:outline-none focus:bg-white/20" />
               <Search className="absolute left-4 top-3.5 text-brand-200" size={18} />
@@ -208,7 +237,16 @@ const Dashboard: React.FC = () => {
             <button onClick={() => setViewMode('home')} className={`relative z-10 w-12 h-10 flex items-center justify-center ${viewMode === 'home' ? 'text-brand-600' : 'text-gray-400'}`}><LayoutDashboard size={20} /></button>
             <button onClick={() => setViewMode('history')} className={`relative z-10 w-12 h-10 flex items-center justify-center ${viewMode === 'history' ? 'text-brand-600' : 'text-gray-400'}`}><History size={20} /></button>
           </div>
-          <button onClick={() => navigate('/new')} className="h-14 px-8 bg-gray-900 text-white rounded-3xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all group overflow-hidden relative">
+          <button 
+            onClick={() => {
+              if (!activeStore) {
+                alert("Please select a store location in the header before starting a report.");
+                return;
+              }
+              navigate('/new');
+            }} 
+            className={`h-14 px-8 text-white rounded-3xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all group overflow-hidden relative ${activeStore ? 'bg-gray-900' : 'bg-gray-400 opacity-60'}`}
+          >
             <Plus size={20} className="group-hover:rotate-90 transition-transform" />
             <span className="font-bold text-sm tracking-tight">New Report</span>
             {hasKey && <Sparkles size={12} className="absolute top-2 right-2 text-brand-400 animate-pulse" />}
