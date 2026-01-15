@@ -17,8 +17,30 @@ export const getDeviceId = (): string => {
 
 // Helper to get current authenticated user ID
 const getCurrentUserId = async (): Promise<string | null> => {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.user?.id || null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user?.id || null;
+  } catch (e) {
+    return null; // Handle offline / failed fetch
+  }
+};
+
+// --- Local Storage Helpers ---
+const loadLocalReports = (): DailyReport[] => {
+  try {
+    const data = localStorage.getItem(LOCAL_STORAGE_KEYS.REPORTS);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+const saveLocalReports = (reports: DailyReport[]) => {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.REPORTS, JSON.stringify(reports));
+  } catch (e) {
+    console.error("Local save failed", e);
+  }
 };
 
 // Helper to map camelCase (App) to snake_case (DB)
@@ -26,7 +48,6 @@ const mapToDb = async (report: DailyReport) => {
   const deviceId = getDeviceId();
   const userId = await getCurrentUserId();
   
-  // Clean existing internal tags to avoid duplication and ensure clean rebuild
   const cleanSources = report.sources.filter(s => 
     !s.startsWith('device:') && 
     !s.startsWith('user:') &&
@@ -47,7 +68,6 @@ const mapToDb = async (report: DailyReport) => {
     time_local: report.timeLocal,
     timezone: report.timezone,
     store_name: report.storeName,
-    // Fix: Using correct property name salesRepName from DailyReport interface
     sales_rep_name: report.salesRepName,
     items: report.items,
     totals: report.totals,
@@ -94,13 +114,17 @@ const mapFromDb = (row: any): DailyReport => {
   };
 };
 
+/**
+ * Loads reports from Supabase if available, merges with LocalStorage.
+ */
 export const loadReports = async (): Promise<DailyReport[]> => {
+  const local = loadLocalReports();
+  
   try {
     const deviceId = getDeviceId();
     const userId = await getCurrentUserId();
     const targetId = userId || `device:${deviceId}`;
     
-    // Using .filter with JSONB containment 'cs' (contains) for maximum compatibility
     const { data, error } = await supabase
       .from('daily_reports')
       .select('*')
@@ -109,47 +133,88 @@ export const loadReports = async (): Promise<DailyReport[]> => {
       .limit(200);
 
     if (error) {
-      console.error('Database query error:', error.message);
-      return [];
+      console.warn('Database query warning:', error.message);
+      return local;
     }
 
-    return (data || []).map(mapFromDb);
+    const remote = (data || []).map(mapFromDb);
+    
+    // Merge remote and local, unique by reportId
+    const merged = [...remote];
+    local.forEach(l => {
+      if (!merged.find(m => m.reportId === l.reportId)) {
+        merged.push(l);
+      }
+    });
+
+    return merged.sort((a, b) => b.createdAt - a.createdAt);
   } catch (err) {
-    console.error('Critical error in loadReports:', err);
-    return [];
+    console.warn('Supabase unreachable, using local fallback:', err);
+    return local;
   }
 };
 
 export const saveReport = async (report: DailyReport): Promise<void> => {
-  const payload = await mapToDb(report);
-  const { error } = await supabase
-    .from('daily_reports')
-    .upsert(payload, { onConflict: 'report_id' });
+  // 1. Save Locally first for immediate UI update
+  const local = loadLocalReports();
+  const existingIndex = local.findIndex(r => r.reportId === report.reportId);
+  if (existingIndex > -1) {
+    local[existingIndex] = report;
+  } else {
+    local.unshift(report);
+  }
+  saveLocalReports(local);
 
-  if (error) {
-    throw new Error(`Database Error: ${error.message}`);
+  // 2. Attempt Remote Save
+  try {
+    const payload = await mapToDb(report);
+    const { error } = await supabase
+      .from('daily_reports')
+      .upsert(payload, { onConflict: 'report_id' });
+
+    if (error) throw error;
+  } catch (err) {
+    console.warn("Could not sync to cloud, data remains locally.", err);
+    // Don't throw, we want the app to keep working locally
   }
 };
 
 export const deleteReports = async (ids: string[]): Promise<void> => {
-  if (ids.length === 0) return;
-  const { error } = await supabase
-    .from('daily_reports')
-    .delete()
-    .in('report_id', ids);
+  // 1. Delete Locally
+  const local = loadLocalReports().filter(r => !ids.includes(r.reportId));
+  saveLocalReports(local);
 
-  if (error) throw new Error(`Database Error: ${error.message}`);
+  // 2. Attempt Remote Delete
+  try {
+    const { error } = await supabase
+      .from('daily_reports')
+      .delete()
+      .in('report_id', ids);
+
+    if (error) throw error;
+  } catch (err) {
+    console.warn("Could not sync delete to cloud.", err);
+  }
 };
 
 export const getReportById = async (id: string): Promise<DailyReport | undefined> => {
-  const { data, error } = await supabase
-    .from('daily_reports')
-    .select('*')
-    .eq('report_id', id)
-    .single();
+  // Check Local first
+  const local = loadLocalReports().find(r => r.reportId === id);
+  if (local) return local;
 
-  if (error || !data) return undefined;
-  return mapFromDb(data);
+  // Attempt Remote
+  try {
+    const { data, error } = await supabase
+      .from('daily_reports')
+      .select('*')
+      .eq('report_id', id)
+      .single();
+
+    if (error || !data) return undefined;
+    return mapFromDb(data);
+  } catch (err) {
+    return undefined;
+  }
 };
 
 export const uploadFile = async (file: File): Promise<string | null> => {
@@ -166,24 +231,26 @@ export const uploadFile = async (file: File): Promise<string | null> => {
 };
 
 export const saveOcrLog = async (imageUrl: string, analysis: SalesItem[]): Promise<void> => {
-  const deviceId = getDeviceId();
-  const userId = await getCurrentUserId();
-  const targetId = userId || `device:${deviceId}`;
-  
-  const { error } = await supabase
-    .from('daily_reports')
-    .insert({ 
-      report_id: generateId(),
-      store_name: 'OCR Log',
-      sales_rep_name: 'System',
-      attachments: [{ type: 'image', url: imageUrl }], 
-      items: analysis, 
-      sources: [targetId, 'ocr'],
-      share_message: 'OCR log entry created automatically.',
-      created_at: Date.now(),
-      totals: { gross: 0, discounts: 0, net: 0 } // Default totals for constraints
-    });
-  if (error) console.warn('OCR Log sync failed:', error.message);
+  try {
+    const deviceId = getDeviceId();
+    const userId = await getCurrentUserId();
+    const targetId = userId || `device:${deviceId}`;
+    
+    const { error } = await supabase
+      .from('daily_reports')
+      .insert({ 
+        report_id: generateId(),
+        store_name: 'OCR Log',
+        sales_rep_name: 'System',
+        attachments: [{ type: 'image', url: imageUrl }], 
+        items: analysis, 
+        sources: [targetId, 'ocr'],
+        share_message: 'OCR log entry created automatically.',
+        created_at: Date.now(),
+        totals: { gross: 0, discounts: 0, net: 0 } 
+      });
+    if (error) console.warn('OCR Log sync failed:', error.message);
+  } catch (e) {}
 };
 
 export const saveConfig = (config: AppConfig) => {
