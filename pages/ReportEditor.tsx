@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, Globe, AlertTriangle, Loader2, Undo2, Redo2, Save, Users, X, Split, Percent, Copy, MessageCircle, ArrowRightLeft, ArrowRight, ArrowLeft as ArrowLeftIcon, Plus, Minus, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, AlertTriangle, Loader2, Undo2, Redo2, Save, X } from 'lucide-react';
 import { DailyReport, SalesItem, SourceType } from '../types';
 import * as StorageService from '../services/storageService';
 import * as CalculationUtils from '../utils/calculations';
@@ -30,19 +30,9 @@ const ReportEditor: React.FC = () => {
   
   const [isDirty, setIsDirty] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [dateWarning, setDateWarning] = useState<{msg: string, date: string} | null>(null);
   
   const [errors, setErrors] = useState<Record<number, { [key in keyof SalesItem]?: string } & { items?: string }>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
-
-  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
-  const [splitRatio, setSplitRatio] = useState<0.5 | 0.6 | 0.7>(0.5);
-  const [staff2Name, setStaff2Name] = useState('');
-  
-  const [splitItemsA, setSplitItemsA] = useState<SalesItem[]>([]);
-  const [splitItemsB, setSplitItemsB] = useState<SalesItem[]>([]);
-  
-  const [createdSplitReports, setCreatedSplitReports] = useState<{a: DailyReport, b: DailyReport} | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -50,7 +40,6 @@ const ReportEditor: React.FC = () => {
         const { dateLocal, timeLocal, tz } = CalculationUtils.getLocalDateTimeAndTimezone();
         const config = StorageService.loadConfig();
         
-        // Remove automatic fallback to MOCK_STORES[0]
         const lastStore = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_STORE) || '';
         const defaultName = [config.salesRepName, config.phoneNumber].filter(Boolean).join(' | ');
 
@@ -96,42 +85,6 @@ const ReportEditor: React.FC = () => {
     setIsSpeaking(false);
   };
 
-  const handleTTS = async () => {
-    if (isSpeaking) {
-      stopSpeech();
-      return;
-    }
-
-    if (!report?.shareMessage) return;
-
-    setIsSpeaking(true);
-    try {
-      const base64Audio = await GeminiService.generateSpeech(report.shareMessage);
-      if (!base64Audio) {
-        setIsSpeaking(false);
-        return;
-      }
-
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
-      
-      const ctx = audioContextRef.current;
-      const audioBuffer = await AudioUtils.decodeAudioData(AudioUtils.decode(base64Audio), ctx);
-      
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      source.onended = () => setIsSpeaking(false);
-      
-      sourceNodeRef.current = source;
-      source.start();
-    } catch (e) {
-      console.error("TTS failed", e);
-      setIsSpeaking(false);
-    }
-  };
-
   const updateReport = useCallback((changes: Partial<DailyReport>) => {
     if (!report) return;
     
@@ -150,7 +103,6 @@ const ReportEditor: React.FC = () => {
     const newErrors: Record<number, { [key in keyof SalesItem]?: string } & { items?: string }> = {};
     setGlobalError(null);
 
-    // Manual Store Validation
     if (!reportToValidate.storeName) {
       setGlobalError("Please select a store location.");
       isValid = false;
@@ -187,7 +139,6 @@ const ReportEditor: React.FC = () => {
 
   const handleSave = async (showErrorAlert = true): Promise<DailyReport | null> => {
     if (!report) return null;
-    
     if (!validate()) return null;
 
     setSaving(true);
@@ -231,7 +182,6 @@ const ReportEditor: React.FC = () => {
     });
   };
 
-  // Fix: Defined handleAddAttachments to handle image/file attachments from CapturePanel
   const handleAddAttachments = useCallback((urls: string[]) => {
     if (!report) return;
     const newAttachments = urls.map(url => ({ type: 'image' as const, url }));
@@ -244,8 +194,6 @@ const ReportEditor: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
-      {/* ... (Split Modal Logic Remains Same) ... */}
-      
       <div className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-gray-200 z-50 px-3 py-2 flex items-center justify-between shadow-sm transition-all">
         <div className="flex items-center gap-1 sm:gap-2">
           <button onClick={() => navigate('/')} className="p-2 text-gray-500 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-colors"><ArrowLeft size={20} /></button>
@@ -277,19 +225,18 @@ const ReportEditor: React.FC = () => {
         )}
 
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-5">
-          {/* ... (Date/Time Inputs Remain Same) ... */}
           <div className="grid grid-cols-2 gap-4">
              <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Date</label>
                 <div className="relative group">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors"><Calendar size={16}/></div>
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Calendar size={16}/></div>
                   <input type="date" value={report.dateLocal} onChange={(e) => updateReport({ dateLocal: e.target.value })} className="w-full text-sm font-semibold bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 outline-none" />
                 </div>
              </div>
              <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Time</label>
                 <div className="relative group">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors"><Clock size={16}/></div>
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Clock size={16}/></div>
                   <input type="time" value={report.timeLocal} onChange={(e) => updateReport({ timeLocal: e.target.value })} className="w-full text-sm font-semibold bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 outline-none" />
                 </div>
              </div>
@@ -298,7 +245,7 @@ const ReportEditor: React.FC = () => {
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Store Location</label>
             <div className="relative group">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors"><MapPin size={16}/></div>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><MapPin size={16}/></div>
               <select 
                 value={report.storeName || ''} 
                 onChange={(e) => { 
@@ -316,18 +263,16 @@ const ReportEditor: React.FC = () => {
               <p className="text-[10px] text-red-500 font-bold ml-1 animate-pulse">Required</p>
             )}
           </div>
-          {/* ... (Sales Rep Input Remains Same) ... */}
           <div className="space-y-1.5">
              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Sales Rep</label>
              <div className="relative group">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors"><User size={16}/></div>
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><User size={16}/></div>
                 <input type="text" placeholder="Your Name" value={report.salesRepName || ''} onChange={(e) => updateReport({ salesRepName: e.target.value })} className="w-full text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 outline-none" />
              </div>
           </div>
         </div>
 
         <CapturePanel onItemsCaptured={handleItemsCaptured} isProcessing={processing} setIsProcessing={setProcessing} onAttachmentsAdded={handleAddAttachments} />
-        {/* ... (Attachments and Table Remains Same) ... */}
         
         <div>
           <div className="flex items-center justify-between px-1 mb-3">
@@ -338,7 +283,6 @@ const ReportEditor: React.FC = () => {
         </div>
 
         <TotalsPanel totals={report.totals} onDiscountChange={(d) => updateReport({ totals: { ...report.totals, discounts: d } })} />
-        {/* ... (WhatsApp Preview Remains Same) ... */}
       </div>
     </div>
   );

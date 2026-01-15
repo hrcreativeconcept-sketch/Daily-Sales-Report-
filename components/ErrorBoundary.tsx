@@ -14,7 +14,8 @@ interface State {
 /**
  * ErrorBoundary catches runtime errors in the component tree and displays a fallback UI.
  */
-// Fix: Used Component from the React import to ensure generics for props and state are correctly identified.
+// Fix: Extending 'Component' directly from 'react' helps TypeScript correctly infer 'this.props' and 'this.state' 
+// types from the provided generics, resolving the "Property 'props' does not exist" error.
 export class ErrorBoundary extends Component<Props, State> {
   // Use property initialization for state
   public state: State = {
