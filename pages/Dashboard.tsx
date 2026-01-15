@@ -81,7 +81,6 @@ const Dashboard: React.FC = () => {
   const filteredReports = useMemo(() => {
     let list = [...reports];
     
-    // 1. Text Search
     if (searchTerm) {
       list = list.filter(r => 
         r.storeName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -89,7 +88,6 @@ const Dashboard: React.FC = () => {
       );
     }
 
-    // 2. Time Range Filter
     const now = new Date();
     if (filterRange === 'day') {
       const todayStr = now.toISOString().split('T')[0];
@@ -105,7 +103,6 @@ const Dashboard: React.FC = () => {
     return list.sort((a, b) => b.createdAt - a.createdAt);
   }, [reports, searchTerm, filterRange]);
 
-  // Grouped reports for history view
   const groupedReports = useMemo(() => {
     const groups: Record<string, DailyReport[]> = {};
     filteredReports.forEach(report => {
@@ -120,90 +117,99 @@ const Dashboard: React.FC = () => {
   const maxVal = Math.max(...last7Days.map(r => r.totals.net), 1);
 
   return (
-    <div className="min-h-screen bg-gray-50/50 pb-32 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50/50 pb-32 font-sans overflow-x-hidden pt-safe">
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} user={currentUser} onAuthSuccess={() => initData(false)} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onConfigChange={() => {}} user={currentUser} />
 
-      {/* AI STATUS BANNER */}
       {!hasKey && (
         <div 
           onClick={handleKeyActivation}
-          className="bg-amber-600 text-white px-4 py-3 sticky top-0 z-[9999] shadow-lg animate-in slide-in-from-top duration-300 cursor-pointer active:bg-amber-700"
+          className="bg-brand-600 text-white px-4 py-3 sticky top-0 z-[100] shadow-elevated animate-in slide-in-from-top duration-300 cursor-pointer active:brightness-95 transition-all"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between max-w-lg mx-auto">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 rounded-lg backdrop-blur-md">
-                <Key size={20} className="text-amber-100" />
+              <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
+                <Key size={18} className="text-white" />
               </div>
               <div>
-                <p className="text-xs font-black uppercase tracking-widest">AI Features Locked</p>
-                <p className="text-[10px] text-amber-100 font-bold opacity-90">Tap to select your Gemini API Key</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.15em] opacity-80">System Engine Offline</p>
+                <p className="text-xs font-bold">Tap to activate AI capabilities</p>
               </div>
             </div>
-            <div className="bg-white text-amber-700 px-4 py-2 rounded-xl text-[10px] font-black shadow-xl">
-              ACTIVATE
+            <div className="bg-white text-brand-600 px-4 py-1.5 rounded-full text-[10px] font-black shadow-sm uppercase tracking-wider">
+              Activate
             </div>
           </div>
         </div>
       )}
 
-      <header className="bg-gradient-to-br from-brand-700 via-brand-600 to-brand-800 text-white px-6 pt-12 pb-8 rounded-b-[2.5rem] shadow-xl relative overflow-hidden z-10">
-        <div className="relative z-10 flex justify-between items-start mb-6">
+      <header className="bg-gradient-to-br from-slate-900 via-brand-900 to-brand-800 text-white px-6 pt-10 pb-10 rounded-b-[3rem] shadow-elevated relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+        <div className="absolute bottom-0 left-0 w-32 h-32 bg-brand-400/5 rounded-full blur-2xl -ml-10 -mb-10"></div>
+
+        <div className="relative z-10 flex justify-between items-center mb-8 max-w-lg mx-auto">
           <div>
-            <h1 className="text-3xl font-extrabold mb-1 tracking-tight">Daily Sales</h1>
-            <p className="text-brand-100 text-sm font-medium opacity-90">Store Analytics & Reports</p>
+            <h1 className="text-3xl font-heading font-extrabold mb-1 tracking-tight">Sales Hub</h1>
+            <p className="text-brand-200/70 text-xs font-bold uppercase tracking-widest">Performance Tracking</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white active:scale-95 transition-all">
-              <Settings size={20} />
+            <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-white active:scale-90 transition-all hover:bg-white/20">
+              <Settings size={20} strokeWidth={2.5} />
             </button>
-            <button onClick={() => setIsAuthModalOpen(true)} className={`p-2.5 rounded-full active:scale-95 transition-all border ${currentUser ? 'bg-white text-brand-700 border-white' : 'bg-white/10 backdrop-blur-md border-white/20 text-white'}`}>
-              <UserCircle size={22} />
+            <button onClick={() => setIsAuthModalOpen(true)} className={`p-2.5 rounded-2xl active:scale-90 transition-all border ${currentUser ? 'bg-white text-brand-700 border-white' : 'bg-white/10 backdrop-blur-md border-white/10 text-white hover:bg-white/20'}`}>
+              <UserCircle size={22} strokeWidth={2.5} />
             </button>
           </div>
         </div>
 
-        {/* Global Store Selector */}
-        <div className="relative z-10 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-4 flex items-center gap-3 shadow-inner mb-2">
-           <div className={`p-2 rounded-lg ${activeStore ? 'bg-brand-400/30' : 'bg-red-400/20'}`}>
-              <MapPinned size={18} className={activeStore ? 'text-white' : 'text-red-200'} />
+        <div className="relative z-10 bg-white/10 backdrop-blur-2xl border border-white/10 rounded-[2rem] p-4 flex items-center gap-4 shadow-inner max-w-lg mx-auto group hover:border-white/20 transition-colors">
+           <div className={`p-3 rounded-2xl transition-all duration-500 ${activeStore ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30' : 'bg-white/5 text-white/40'}`}>
+              <MapPinned size={20} strokeWidth={2.5} />
            </div>
            <div className="flex-1">
-              <p className="text-[10px] font-black uppercase tracking-widest text-brand-200 mb-0.5">Active Location</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-brand-200/60 mb-1">Current Workspace</p>
               <select 
                 value={activeStore}
                 onChange={(e) => handleStoreChange(e.target.value)}
-                className="w-full bg-transparent text-sm font-bold text-white outline-none appearance-none cursor-pointer"
+                className="w-full bg-transparent text-sm font-bold text-white outline-none appearance-none cursor-pointer pr-8"
               >
-                <option value="" className="text-gray-900">Select Store...</option>
+                <option value="" className="text-gray-900">Select Branch...</option>
                 {MOCK_STORES.map(s => (
-                  <option key={s} value={s} className="text-gray-900">{s}</option>
+                  <option key={s} value={s} className="text-gray-900 font-medium">{s}</option>
                 ))}
               </select>
            </div>
-           {activeStore && (
-             <button onClick={() => handleStoreChange('')} className="p-1 text-white/50 hover:text-white transition-colors">
-               <X size={14} />
+           {activeStore ? (
+             <button onClick={() => handleStoreChange('')} className="p-2 text-white/40 hover:text-white transition-colors bg-white/5 rounded-xl">
+               <X size={16} strokeWidth={3} />
              </button>
+           ) : (
+             <ChevronRight size={20} className="text-white/20 group-hover:translate-x-1 transition-transform" />
            )}
         </div>
 
         {viewMode === 'history' && (
-          <div className="mt-4 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="relative mb-4">
-              <input type="text" placeholder="Search stores or reps..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white/10 border border-white/20 backdrop-blur-md rounded-2xl py-3 pl-11 pr-4 text-white placeholder-brand-200 focus:outline-none focus:bg-white/20" />
-              <Search className="absolute left-4 top-3 text-brand-200" size={18} />
+          <div className="mt-8 animate-in fade-in slide-in-from-top-4 duration-500 max-w-lg mx-auto">
+            <div className="relative mb-6">
+              <input 
+                type="text" 
+                placeholder="Search history..." 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+                className="w-full bg-white/10 border border-white/10 backdrop-blur-md rounded-2xl py-3.5 pl-12 pr-4 text-white placeholder-brand-200/50 focus:outline-none focus:bg-white/15 focus:ring-4 focus:ring-brand-500/10 transition-all" 
+              />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-200/50" size={18} strokeWidth={2.5} />
             </div>
             
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <div className="flex p-1 bg-white/10 backdrop-blur-md rounded-2xl gap-1">
               {(['all', 'day', 'week', 'month'] as FilterRange[]).map(range => (
                 <button
                   key={range}
                   onClick={() => setFilterRange(range)}
-                  className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                  className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                     filterRange === range 
-                      ? 'bg-white text-brand-700 shadow-md scale-105' 
-                      : 'bg-white/10 text-brand-100 hover:bg-white/20'
+                      ? 'bg-white text-slate-900 shadow-lg scale-[1.02]' 
+                      : 'text-brand-100/60 hover:text-white'
                   }`}
                 >
                   {range}
@@ -214,30 +220,38 @@ const Dashboard: React.FC = () => {
         )}
       </header>
 
-      <div className="px-5 pt-6 relative z-20">
+      <div className="px-6 pt-8 relative z-20 max-w-lg mx-auto">
         {loading ? (
-          <div className="bg-white p-12 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center justify-center">
-            <Loader2 size={32} className="text-brand-500 animate-spin mb-4" />
-            <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">Loading Reports</p>
+          <div className="bg-white p-12 rounded-[2.5rem] shadow-soft border border-slate-100 flex flex-col items-center justify-center">
+            <div className="relative mb-4">
+              <Loader2 size={32} className="text-brand-500 animate-spin" />
+              <div className="absolute inset-0 bg-brand-500/20 rounded-full blur-xl animate-pulse"></div>
+            </div>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Synchronizing</p>
           </div>
         ) : (
           <>
             {viewMode === 'home' && (
               <>
                 {last7Days.length > 0 && (
-                  <div className="bg-white p-5 rounded-3xl shadow-lg border border-gray-100 mb-6 animate-in slide-in-from-bottom-4">
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <TrendingUp size={14} className="text-brand-500" /> Sales Trend
+                  <div className="bg-white p-6 rounded-[2.5rem] shadow-soft border border-slate-100 mb-8 animate-in slide-in-from-bottom-4">
+                    <div className="flex items-center justify-between mb-8">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <TrendingUp size={14} className="text-brand-500" strokeWidth={3} /> Insights
                       </h3>
+                      <span className="text-[10px] font-bold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-full">Last 7 Reports</span>
                     </div>
                     <div className="h-32 flex items-end justify-between gap-3 px-1">
                       {last7Days.map((r, i) => {
-                        const height = Math.max((r.totals.net / maxVal) * 100, 10);
+                        const height = Math.max((r.totals.net / maxVal) * 100, 15);
+                        const isLatest = i === last7Days.length - 1;
                         return (
-                          <div key={r.reportId} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
-                            <div className={`w-full max-w-[12px] rounded-full transition-all duration-1000 ${i === last7Days.length - 1 ? 'bg-brand-500' : 'bg-brand-100'}`} style={{ height: `${height}%` }}></div>
-                            <span className="text-[8px] font-bold text-gray-400">{r.dateLocal.split('-').slice(1).join('/')}</span>
+                          <div key={r.reportId} className="flex-1 flex flex-col items-center gap-3 h-full justify-end group">
+                            <div 
+                              className={`w-full max-w-[12px] rounded-full transition-all duration-1000 group-hover:opacity-80 ${isLatest ? 'bg-brand-500 shadow-lg shadow-brand-500/40' : 'bg-slate-100'}`} 
+                              style={{ height: `${height}%` }}
+                            ></div>
+                            <span className={`text-[8px] font-bold ${isLatest ? 'text-brand-600' : 'text-slate-400'}`}>{r.dateLocal.split('-')[2]}</span>
                           </div>
                         );
                       })}
@@ -245,25 +259,39 @@ const Dashboard: React.FC = () => {
                   </div>
                 )}
 
-                <div className="animate-in slide-in-from-bottom-6">
+                <div className="animate-in slide-in-from-bottom-6 duration-500">
+                  <div className="flex items-center justify-between mb-4 px-2">
+                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Most Recent</h3>
+                  </div>
                   {mostRecentReport ? (
-                    <div onClick={() => navigate(`/report/${mostRecentReport.reportId}`)} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-brand-900/5 active:scale-[0.98] transition-all cursor-pointer relative overflow-hidden group">
+                    <div 
+                      onClick={() => navigate(`/report/${mostRecentReport.reportId}`)} 
+                      className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-elevated active:scale-[0.98] transition-all cursor-pointer relative overflow-hidden group hover:border-brand-100"
+                    >
+                      <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:scale-110 transition-transform">
+                        <FileText size={120} />
+                      </div>
                       <div className="relative z-10">
-                        <div className="flex justify-between items-center mb-4">
-                          <span className="bg-gray-900 text-white text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest">{mostRecentReport.dateLocal}</span>
-                          <div className="p-2 bg-brand-50 rounded-xl text-brand-600 group-hover:bg-brand-600 group-hover:text-white transition-all"><ChevronRight size={16} /></div>
+                        <div className="flex justify-between items-start mb-6">
+                          <span className="bg-slate-900 text-white text-[9px] font-black px-3 py-1.5 rounded-xl uppercase tracking-widest shadow-lg shadow-slate-900/10">{mostRecentReport.dateLocal}</span>
+                          <div className="p-3 bg-brand-50 rounded-2xl text-brand-600 group-hover:bg-brand-600 group-hover:text-white group-hover:rotate-12 transition-all shadow-sm">
+                            <ChevronRight size={18} strokeWidth={3} />
+                          </div>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-1">{mostRecentReport.storeName}</h3>
-                        <p className="text-xs text-gray-500 font-medium mb-4">{mostRecentReport.items.length} products logged</p>
-                        <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-brand-800">
+                        <h3 className="text-2xl font-heading font-extrabold text-slate-900 mb-1 group-hover:text-brand-900 transition-colors">{mostRecentReport.storeName}</h3>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-pulse"></span>
+                          {mostRecentReport.items.length} Units Logged
+                        </p>
+                        <div className="text-4xl font-black tracking-tight text-slate-900 font-heading">
                           {formatCurrency(mostRecentReport.totals.net)}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-gray-100">
-                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4"><FileText className="text-gray-300" size={24} /></div>
-                      <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">No reports found</p>
+                    <div className="text-center py-20 bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
+                      <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><FileText className="text-slate-300" size={32} /></div>
+                      <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">No sales recorded yet</p>
                     </div>
                   )}
                 </div>
@@ -271,41 +299,44 @@ const Dashboard: React.FC = () => {
             )}
 
             {viewMode === 'history' && (
-              <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-500 pb-10">
+              <div className="space-y-10 animate-in slide-in-from-bottom-8 duration-500 pb-10">
                 {Object.keys(groupedReports).length === 0 ? (
-                  <div className="text-center py-20">
-                     <Calendar className="text-gray-300 mx-auto mb-4" size={48} />
-                     <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">No matching history</p>
+                  <div className="text-center py-24 bg-white rounded-[2.5rem] border border-slate-100">
+                     <Calendar className="text-slate-200 mx-auto mb-6 animate-pulse" size={48} />
+                     <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">History Empty</p>
                   </div>
                 ) : (
                   Object.keys(groupedReports).map((date) => {
                     const dayReports = groupedReports[date];
                     return (
-                      <div key={date} className="space-y-3">
-                        <div className="flex items-center justify-between px-2">
-                           <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                             <Calendar size={14} className="text-brand-500" /> {date}
+                      <div key={date} className="space-y-4">
+                        <div className="flex items-center justify-between px-3">
+                           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-3">
+                             <div className="w-1.5 h-1.5 bg-brand-500 rounded-full"></div> {date}
                            </h3>
                            <button 
                              onClick={(e) => { e.stopPropagation(); handleDeleteDay(date); }}
-                             className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                             title="Delete all for this day"
+                             className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all active:scale-90"
                            >
-                             <Trash2 size={16} />
+                             <Trash2 size={16} strokeWidth={2.5} />
                            </button>
                         </div>
                         
                         <div className="space-y-3">
                           {dayReports.map(report => (
-                            <div key={report.reportId} onClick={() => navigate(`/report/${report.reportId}`)} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center active:scale-[0.98] transition-all">
-                              <div>
-                                <p className="text-xs text-gray-400 font-bold uppercase mb-0.5">{report.timeLocal}</p>
-                                <p className="text-sm font-bold text-gray-900 truncate max-w-[150px]">{report.storeName}</p>
-                                <p className="text-[10px] text-gray-500 truncate max-w-[150px]">{report.salesRepName}</p>
+                            <div 
+                              key={report.reportId} 
+                              onClick={() => navigate(`/report/${report.reportId}`)} 
+                              className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-soft flex justify-between items-center active:scale-[0.98] transition-all hover:border-brand-200 group"
+                            >
+                              <div className="flex-1 min-w-0 pr-4">
+                                <p className="text-[9px] text-slate-400 font-black uppercase mb-1 tracking-wider">{report.timeLocal}</p>
+                                <p className="text-sm font-bold text-slate-900 truncate group-hover:text-brand-600 transition-colors">{report.storeName}</p>
+                                <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{report.salesRepName}</p>
                               </div>
                               <div className="text-right">
-                                <span className="block text-sm font-black text-brand-600">{formatCurrency(report.totals.net)}</span>
-                                <span className="text-[9px] text-gray-400 font-bold uppercase">{report.items.length} items</span>
+                                <span className="block text-base font-black text-slate-900 group-hover:text-brand-600 transition-colors">{formatCurrency(report.totals.net)}</span>
+                                <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{report.items.length} SKU</span>
                               </div>
                             </div>
                           ))}
@@ -320,27 +351,41 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      {/* FOOTER BAR */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-[60]">
-        <div className="bg-white/80 backdrop-blur-xl border border-white/40 p-2 rounded-[2.5rem] shadow-2xl flex items-center justify-between pl-4 pr-2 ring-1 ring-gray-200/50">
-          <div className="flex bg-gray-100/80 p-1 rounded-full relative">
-            <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full shadow-sm transition-all duration-300 ${viewMode === 'home' ? 'left-1' : 'left-[calc(50%+2px)]'}`}></div>
-            <button onClick={() => setViewMode('home')} className={`relative z-10 w-12 h-10 flex items-center justify-center ${viewMode === 'home' ? 'text-brand-600' : 'text-gray-400'}`}><LayoutDashboard size={20} /></button>
-            <button onClick={() => setViewMode('history')} className={`relative z-10 w-12 h-10 flex items-center justify-center ${viewMode === 'history' ? 'text-brand-600' : 'text-gray-400'}`}><History size={20} /></button>
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-[60]">
+        <div className="bg-slate-900/95 backdrop-blur-2xl border border-white/10 p-2.5 rounded-[2.5rem] shadow-elevated flex items-center justify-between pl-6 pr-3">
+          <div className="flex bg-white/5 p-1 rounded-2xl relative">
+            <button 
+              onClick={() => setViewMode('home')} 
+              className={`relative z-10 w-12 h-11 flex items-center justify-center transition-all ${viewMode === 'home' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <LayoutDashboard size={20} strokeWidth={2.5} />
+              {viewMode === 'home' && <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-lg animate-in zoom-in-95 duration-200"></div>}
+            </button>
+            <button 
+              onClick={() => setViewMode('history')} 
+              className={`relative z-10 w-12 h-11 flex items-center justify-center transition-all ${viewMode === 'history' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <History size={20} strokeWidth={2.5} />
+              {viewMode === 'history' && <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-lg animate-in zoom-in-95 duration-200"></div>}
+            </button>
           </div>
           <button 
             onClick={() => {
               if (!activeStore) {
-                alert("Please select a store location in the header before starting a report.");
+                alert("Please select a workspace in the header first.");
                 return;
               }
               navigate('/new');
             }} 
-            className={`h-14 px-8 text-white rounded-3xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all group overflow-hidden relative ${activeStore ? 'bg-gray-900' : 'bg-gray-400 opacity-60'}`}
+            className={`h-14 px-8 text-white rounded-[1.75rem] shadow-lg flex items-center justify-center gap-3 active:scale-95 transition-all group overflow-hidden relative ${activeStore ? 'bg-brand-600 hover:bg-brand-500 shadow-brand-600/25' : 'bg-slate-700 opacity-60 cursor-not-allowed'}`}
           >
-            <Plus size={20} className="group-hover:rotate-90 transition-transform" />
-            <span className="font-bold text-sm tracking-tight">New Report</span>
-            {hasKey && <Sparkles size={12} className="absolute top-2 right-2 text-brand-400 animate-pulse" />}
+            <Plus size={20} strokeWidth={3} className="group-hover:rotate-90 transition-transform" />
+            <span className="font-black text-xs uppercase tracking-widest">New Report</span>
+            {hasKey && (
+              <div className="absolute top-0 right-0 p-1">
+                <Sparkles size={10} className="text-brand-300 animate-pulse" />
+              </div>
+            )}
           </button>
         </div>
       </div>

@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, AlertTriangle, Loader2, Undo2, Redo2, Save, X } from 'lucide-react';
+import { ArrowLeft, Share2, Clock, MapPin, User, Calendar, CheckCircle, AlertTriangle, Loader2, Undo2, Redo2, Save } from 'lucide-react';
 import { DailyReport, SalesItem, SourceType } from '../types';
 import * as StorageService from '../services/storageService';
 import * as CalculationUtils from '../utils/calculations';
 import { MOCK_STORES, LOCAL_STORAGE_KEYS } from '../constants';
 import useUndoRedo from '../hooks/useUndoRedo';
-import * as GeminiService from '../services/geminiService';
-import * as AudioUtils from '../utils/audioUtils';
 
 import CapturePanel from '../components/CapturePanel';
 import ItemsTable from '../components/ItemsTable';
@@ -22,9 +20,6 @@ const ReportEditor: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   
   const { state: report, set: setReport, undo, redo, canUndo, canRedo, init: initReport } = useUndoRedo<DailyReport | null>(null);
   
@@ -71,19 +66,7 @@ const ReportEditor: React.FC = () => {
       }
     };
     init();
-    
-    return () => {
-      stopSpeech();
-    };
   }, [id, isNew, navigate, initReport]);
-
-  const stopSpeech = () => {
-    if (sourceNodeRef.current) {
-      try { sourceNodeRef.current.stop(); } catch (e) {}
-      sourceNodeRef.current = null;
-    }
-    setIsSpeaking(false);
-  };
 
   const updateReport = useCallback((changes: Partial<DailyReport>) => {
     if (!report) return;
@@ -103,6 +86,7 @@ const ReportEditor: React.FC = () => {
     const newErrors: Record<number, { [key in keyof SalesItem]?: string } & { items?: string }> = {};
     setGlobalError(null);
 
+    // SalesRepName is now optional per requirements
     if (!reportToValidate.storeName) {
       setGlobalError("Please select a store location.");
       isValid = false;
@@ -190,62 +174,64 @@ const ReportEditor: React.FC = () => {
     });
   }, [report, updateReport]);
 
-  if (loading || !report) return <div className="p-8 text-center text-gray-500 flex flex-col items-center justify-center min-h-screen"><Loader2 className="animate-spin mb-3 text-brand-600" size={32} />Loading...</div>;
+  if (loading || !report) return <div className="p-8 text-center text-gray-500 flex flex-col items-center justify-center min-h-screen"><Loader2 className="animate-spin mb-3 text-brand-600" size={32} />Loading Editor...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
-      <div className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-gray-200 z-50 px-3 py-2 flex items-center justify-between shadow-sm transition-all">
-        <div className="flex items-center gap-1 sm:gap-2">
-          <button onClick={() => navigate('/')} className="p-2 text-gray-500 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-colors"><ArrowLeft size={20} /></button>
-          <div className="h-6 w-px bg-gray-200 mx-1"></div>
-          <div className="flex items-center gap-0.5">
-            <button onClick={undo} disabled={!canUndo} className="p-2 text-gray-400 disabled:opacity-30 hover:text-gray-700 rounded-full transition-all active:scale-95" title="Undo"><Undo2 size={18} /></button>
-            <button onClick={redo} disabled={!canRedo} className="p-2 text-gray-400 disabled:opacity-30 hover:text-gray-700 rounded-full transition-all active:scale-95" title="Redo"><Redo2 size={18} /></button>
+    <div className="min-h-screen bg-slate-50/50 pb-32 font-sans">
+      <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-100 z-50 px-4 py-3 flex items-center justify-between shadow-soft">
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/')} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition-all active:scale-90"><ArrowLeft size={22} strokeWidth={2.5} /></button>
+          <div className="h-6 w-px bg-slate-200 mx-1"></div>
+          <div className="flex items-center gap-1">
+            <button onClick={undo} disabled={!canUndo} className="p-2 text-slate-400 disabled:opacity-30 hover:text-slate-900 rounded-xl transition-all active:scale-90" title="Undo"><Undo2 size={20} /></button>
+            <button onClick={redo} disabled={!canRedo} className="p-2 text-slate-400 disabled:opacity-30 hover:text-slate-900 rounded-xl transition-all active:scale-90" title="Redo"><Redo2 size={20} /></button>
           </div>
-          <div className="ml-1 flex flex-col justify-center">
+          <div className="ml-2 flex items-center">
              {saveSuccess ? (
-                <span className="text-[10px] text-green-600 font-bold uppercase tracking-wide flex items-center gap-1 animate-in fade-in"><CheckCircle size={10}/> Saved</span>
+                <span className="text-[10px] text-emerald-600 font-black uppercase tracking-[0.15em] flex items-center gap-1.5 animate-in zoom-in-95"><CheckCircle size={12}/> Success</span>
               ) : (
-                <span className={`text-[10px] font-bold tracking-wide transition-colors ${isDirty ? 'text-amber-500' : 'text-gray-300'}`}>{isDirty ? 'Unsaved' : 'Saved'}</span>
+                <span className={`text-[10px] font-black uppercase tracking-[0.15em] transition-colors ${isDirty ? 'text-amber-500' : 'text-slate-300'}`}>{isDirty ? 'Pending' : 'Synced'}</span>
               )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleShare} className="text-brand-600 hover:bg-brand-50 p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5" title="Share"><Share2 size={18} /> <span className="hidden sm:inline">Share</span></button>
-          <button onClick={handleSaveAndExit} disabled={saving} className="bg-gray-900 text-white px-4 py-2 rounded-xl shadow-lg hover:bg-black active:scale-95 transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-bold">{saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={16} />} Save</button>
+          <button onClick={handleShare} className="text-brand-600 hover:bg-brand-50 p-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2" title="Share Preview"><Share2 size={18} strokeWidth={2.5} /> <span className="hidden sm:inline">Preview</span></button>
+          <button onClick={handleSaveAndExit} disabled={saving} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl shadow-elevated hover:bg-black active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2 text-xs font-black uppercase tracking-widest">{saving ? <Loader2 size={16} className="animate-spin"/> : <Save size={18} strokeWidth={2.5} />} Finish</button>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto p-5 space-y-6">
+      <div className="max-w-xl mx-auto p-6 space-y-8">
         {globalError && (
-          <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-4 shadow-sm">
-            <div className="p-1.5 bg-white rounded-full text-red-500 shadow-sm"><AlertTriangle size={16} /></div>
-            <span className="text-sm font-semibold">{globalError}</span>
+          <div className="bg-red-50 border border-red-100 text-red-700 px-5 py-4 rounded-[2rem] flex items-center gap-3 animate-in slide-in-from-top-4 shadow-sm">
+            <div className="p-2 bg-white rounded-full text-red-500 shadow-sm"><AlertTriangle size={18} /></div>
+            <span className="text-xs font-bold uppercase tracking-tight">{globalError}</span>
           </div>
         )}
 
-        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-5">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-soft space-y-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50/50 rounded-full blur-3xl -mr-16 -mt-16"></div>
+          
           <div className="grid grid-cols-2 gap-4">
-             <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Date</label>
+             <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Reporting Date</label>
                 <div className="relative group">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Calendar size={16}/></div>
-                  <input type="date" value={report.dateLocal} onChange={(e) => updateReport({ dateLocal: e.target.value })} className="w-full text-sm font-semibold bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 outline-none" />
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-500 transition-colors"><Calendar size={18} strokeWidth={2.5}/></div>
+                  <input type="date" value={report.dateLocal} onChange={(e) => updateReport({ dateLocal: e.target.value })} className="w-full text-sm font-bold bg-slate-50 border border-transparent rounded-[1.25rem] pl-12 pr-4 py-4 focus:bg-white focus:border-brand-500 outline-none transition-all shadow-inner" />
                 </div>
              </div>
-             <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Time</label>
+             <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Logging Time</label>
                 <div className="relative group">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Clock size={16}/></div>
-                  <input type="time" value={report.timeLocal} onChange={(e) => updateReport({ timeLocal: e.target.value })} className="w-full text-sm font-semibold bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 outline-none" />
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-500 transition-colors"><Clock size={18} strokeWidth={2.5}/></div>
+                  <input type="time" value={report.timeLocal} onChange={(e) => updateReport({ timeLocal: e.target.value })} className="w-full text-sm font-bold bg-slate-50 border border-transparent rounded-[1.25rem] pl-12 pr-4 py-4 focus:bg-white focus:border-brand-500 outline-none transition-all shadow-inner" />
                 </div>
              </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Store Location</label>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Workspace / Store</label>
             <div className="relative group">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><MapPin size={16}/></div>
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-500 transition-colors"><MapPin size={18} strokeWidth={2.5}/></div>
               <select 
                 value={report.storeName || ''} 
                 onChange={(e) => { 
@@ -253,31 +239,34 @@ const ReportEditor: React.FC = () => {
                   updateReport({ storeName: val }); 
                   if (val) localStorage.setItem(LOCAL_STORAGE_KEYS.LAST_STORE, val); 
                 }} 
-                className={`w-full text-sm font-medium bg-gray-50 border rounded-xl pl-10 pr-8 py-3 appearance-none focus:border-brand-500 outline-none transition-all ${!report.storeName ? 'border-red-300 bg-red-50/20' : 'border-gray-200'}`}
+                className={`w-full text-sm font-bold bg-slate-50 border border-transparent rounded-[1.25rem] pl-12 pr-10 py-4 appearance-none focus:bg-white focus:border-brand-500 outline-none transition-all shadow-inner ${!report.storeName ? 'ring-2 ring-red-100' : ''}`}
               >
-                <option value="">Select Store Location...</option>
+                <option value="">Choose Location...</option>
                 {MOCK_STORES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             {!report.storeName && (
-              <p className="text-[10px] text-red-500 font-bold ml-1 animate-pulse">Required</p>
+              <p className="text-[9px] text-red-500 font-black uppercase tracking-widest ml-4 mt-1 animate-pulse">Required</p>
             )}
           </div>
-          <div className="space-y-1.5">
-             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Sales Rep</label>
+
+          <div className="space-y-2">
+             <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Sales Agent <span className="text-[8px] opacity-50 font-medium">(Optional)</span></label>
              <div className="relative group">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><User size={16}/></div>
-                <input type="text" placeholder="Your Name" value={report.salesRepName || ''} onChange={(e) => updateReport({ salesRepName: e.target.value })} className="w-full text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-3 focus:border-brand-500 outline-none" />
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-brand-500 transition-colors"><User size={18} strokeWidth={2.5}/></div>
+                <input type="text" placeholder="Your Name" value={report.salesRepName || ''} onChange={(e) => updateReport({ salesRepName: e.target.value })} className="w-full text-sm font-bold bg-slate-50 border border-transparent rounded-[1.25rem] pl-12 pr-4 py-4 focus:bg-white focus:border-brand-500 outline-none transition-all shadow-inner" />
              </div>
           </div>
         </div>
 
         <CapturePanel onItemsCaptured={handleItemsCaptured} isProcessing={processing} setIsProcessing={setProcessing} onAttachmentsAdded={handleAddAttachments} />
         
-        <div>
-          <div className="flex items-center justify-between px-1 mb-3">
-             <h2 className="text-sm font-bold text-gray-800">Sales Items</h2>
-             <span className="text-[10px] font-bold text-gray-500 bg-white border border-gray-200 px-2 py-1 rounded-full shadow-sm">{report.items.length} items</span>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-3">
+             <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+               <div className="w-1.5 h-1.5 bg-brand-500 rounded-full"></div> Entry Table
+             </h2>
+             <span className="text-[9px] font-black text-slate-900 bg-white border border-slate-100 px-3 py-1 rounded-full shadow-soft">{report.items.length} Units</span>
           </div>
           <ItemsTable items={report.items} onChange={(items) => updateReport({ items })} isParsing={processing} errors={errors} />
         </div>

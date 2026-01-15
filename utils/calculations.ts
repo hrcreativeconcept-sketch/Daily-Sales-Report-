@@ -35,11 +35,7 @@ export const computeTotals = (items: SalesItem[], discounts: number = 0): Totals
  * Robust currency formatter that prevents crashes on invalid ISO codes.
  */
 export const formatCurrency = (amount: number, currency = 'AED') => {
-  // 1. Sanitize and provide default
   let code = (currency || 'AED').trim().toUpperCase();
-  
-  // 2. Strict ISO 4217 validation (3 letters)
-  // If invalid, fallback to AED to ensure Intl doesn't throw
   if (!/^[A-Z]{3}$/.test(code)) {
     code = 'AED';
   }
@@ -52,13 +48,11 @@ export const formatCurrency = (amount: number, currency = 'AED') => {
       minimumFractionDigits: 2
     }).format(amount);
   } catch (e) {
-    // 3. Last resort fallback for legacy environments or extreme edge cases
     return `${code} ${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 };
 
 export const buildShareMessage = (report: DailyReport): string => {
-  // 1. Format Date: 30-Nov-2025
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   let dateFormatted = report.dateLocal;
   
@@ -68,36 +62,30 @@ export const buildShareMessage = (report: DailyReport): string => {
       const year = parts[0];
       const monthIdx = parseInt(parts[1], 10) - 1;
       const day = parseInt(parts[2], 10);
-      
       if (months[monthIdx]) {
         dateFormatted = `${day}-${months[monthIdx]}-${year}`;
       }
     }
   } catch (e) {}
 
-  // 2. Build Header
-  let message = `${report.storeName}\n${dateFormatted} \n\nSale Report`;
+  // Header logic: Omit agent name if empty
+  let message = `${report.storeName}\n${dateFormatted}\n\nSale Report`;
   
-  if (report.salesRepName) {
-    message += ` (${report.salesRepName})`;
+  if (report.salesRepName && report.salesRepName.trim()) {
+    message += ` (${report.salesRepName.trim()})`;
   }
   
   message += `\n`;
 
-  // 3. Build Item List
   report.items.forEach((item, index) => {
     const lineTotal = item.quantity * item.unitPrice;
-    
-    // Format number: remove decimals if whole number (80), keep if necessary (80.50)
     const priceStr = lineTotal % 1 === 0 
       ? lineTotal.toString() 
       : lineTotal.toFixed(2);
 
-    // Format: 1. Qty Name Price Currency
     message += `\n${index + 1}. ${item.quantity} ${item.productName} ${priceStr} ${item.currency}`;
   });
 
-  // 4. Build Footer
   const netTotal = report.totals.net % 1 === 0 
     ? report.totals.net.toString() 
     : report.totals.net.toFixed(2);
@@ -126,7 +114,6 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
   for (const item of items) {
     if (totalUnits >= MAX_UNITS) break;
     const qtyToFlatten = Math.min(item.quantity, MAX_UNITS - totalUnits);
-    
     for (let i = 0; i < qtyToFlatten; i++) {
       units.push({ item: { ...item, quantity: 1 }, price: item.unitPrice });
       totalUnits++;
@@ -134,7 +121,6 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
   }
 
   units.sort((a, b) => b.price - a.price);
-
   const totalValue = units.reduce((sum, u) => sum + u.price, 0);
   const targetValueA = totalValue * ratio;
   
@@ -145,7 +131,6 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
   units.forEach(unit => {
      const distIfAdd = Math.abs((currentSumA + unit.price) - targetValueA);
      const distIfSkip = Math.abs(currentSumA - targetValueA);
-     
      if (distIfAdd <= distIfSkip) {
          unitsA.push(unit);
          currentSumA += unit.price;
@@ -163,7 +148,6 @@ export const splitSalesItems = (items: SalesItem[], ratio: number): [SalesItem[]
             m.sku === u.item.sku &&
             m.notes === u.item.notes
           );
-          
           if (existing) {
               existing.quantity += 1;
           } else {
