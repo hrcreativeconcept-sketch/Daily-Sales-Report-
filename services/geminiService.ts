@@ -36,7 +36,7 @@ Rules:
  * Checks if a valid API key is available in the environment.
  */
 export const hasValidKey = (): boolean => {
-  const key = process.env.API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   if (!key) return false;
   const invalidStrings = ["undefined", "null", "", "false", "0"];
   return key.length > 10 && !invalidStrings.includes(key.toLowerCase());
@@ -79,7 +79,7 @@ let cachedKey: string | null = null;
  * Creates or retrieves a cached instance of the Gemini AI client.
  */
 const getClient = async () => {
-  const currentKey = process.env.API_KEY || '';
+  const currentKey = process.env.GEMINI_API_KEY || '';
   
   if (cachedClient && cachedKey === currentKey) {
     return cachedClient;
@@ -95,8 +95,8 @@ const getClient = async () => {
   return cachedClient;
 };
 
-// Use gemini-2.0-flash for high speed and excellent extraction accuracy
-const DEFAULT_MODEL = "gemini-2.0-flash";
+// Use gemini-3-flash-preview for high speed and excellent extraction accuracy
+const DEFAULT_MODEL = "gemini-3-flash-preview";
 
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   const ai = await getClient();
@@ -110,8 +110,23 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
         responseSchema: ITEM_SCHEMA,
       },
     });
-    return JSON.parse(response.text || "[]");
+    
+    const rawText = response.text;
+    if (!rawText) return [];
+    
+    try {
+      return JSON.parse(rawText);
+    } catch (parseError) {
+      console.error("JSON Parse Error. Raw response:", rawText);
+      // Fallback: try to find JSON block if it's wrapped in markdown
+      const jsonMatch = rawText.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      throw new Error("Invalid response format from AI engine.");
+    }
   } catch (error: any) {
+    console.error("Gemini parseFromText error:", error);
     if (error.message?.includes("entity was not found") && window.aistudio) {
       window.aistudio.openSelectKey();
     }
@@ -136,8 +151,20 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
         responseSchema: ITEM_SCHEMA,
       },
     });
-    return JSON.parse(response.text || "[]");
+    
+    const rawText = response.text;
+    if (!rawText) return [];
+    
+    try {
+      return JSON.parse(rawText);
+    } catch (parseError) {
+      console.error("JSON Parse Error (File). Raw response:", rawText);
+      const jsonMatch = rawText.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      throw new Error("Invalid response format from AI engine.");
+    }
   } catch (error: any) {
+    console.error("Gemini parseFromFile error:", error);
     throw error;
   }
 };
@@ -159,8 +186,20 @@ export const parseFromAudio = async (base64Audio: string, mimeType: string = 'au
         responseSchema: ITEM_SCHEMA,
       },
     });
-    return JSON.parse(response.text || "[]");
+    
+    const rawText = response.text;
+    if (!rawText) return [];
+    
+    try {
+      return JSON.parse(rawText);
+    } catch (parseError) {
+      console.error("JSON Parse Error (Audio). Raw response:", rawText);
+      const jsonMatch = rawText.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      throw new Error("Invalid response format from AI engine.");
+    }
   } catch (error: any) {
+    console.error("Gemini parseFromAudio error:", error);
     throw error;
   }
 };
