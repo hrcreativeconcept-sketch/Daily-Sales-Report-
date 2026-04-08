@@ -15,7 +15,7 @@ interface State {
  * ErrorBoundary catches runtime errors in the component tree and displays a fallback UI.
  */
 // Explicitly extending Component ensures this.props and this.state are correctly typed by the TypeScript compiler.
-export class ErrorBoundary extends Component<Props, State> {
+export class ErrorBoundary extends React.Component<Props, State> {
   // Use property initialization for state
   public state: State = {
     hasError: false,

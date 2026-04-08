@@ -29,19 +29,28 @@ const Dashboard: React.FC = () => {
   const [activeStore, setActiveStore] = useState<string>(localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_STORE) || '');
 
   const initData = async (checkKey = true) => {
-    setLoading(true);
+    // 1. Load local data immediately for speed
+    const localData = StorageService.loadReportsLocalOnly();
+    setReports(localData.filter(r => !r.isDeleted));
+    
     if (checkKey) {
       const keyOk = await GeminiService.ensureApiKey();
       setHasKey(keyOk);
     }
-    const [user, data] = await Promise.all([
-      AuthService.getCurrentUser(),
-      StorageService.loadReports()
-    ]);
-    setCurrentUser(user);
-    // Explicitly filter for non-deleted reports just in case
-    setReports(data.filter(r => !r.isDeleted));
-    setLoading(false);
+
+    // 2. Fetch user and remote data in background
+    try {
+      const [user, data] = await Promise.all([
+        AuthService.getCurrentUser(),
+        StorageService.loadReports()
+      ]);
+      setCurrentUser(user);
+      setReports(data.filter(r => !r.isDeleted));
+    } catch (e) {
+      console.warn("Background sync failed", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -145,73 +154,72 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      <header className="bg-gradient-to-br from-slate-900 via-brand-900 to-brand-800 text-white px-6 pt-10 pb-10 rounded-b-[3rem] shadow-elevated relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-        <div className="absolute bottom-0 left-0 w-32 h-32 bg-brand-400/5 rounded-full blur-2xl -ml-10 -mb-10"></div>
-
-        <div className="relative z-10 flex justify-between items-center mb-8 max-w-lg mx-auto">
+      <header className="bg-white border-b border-slate-200 px-6 pt-12 pb-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-slate-100 rounded-full blur-3xl -mr-20 -mt-20 opacity-50"></div>
+        
+        <div className="relative z-10 flex justify-between items-end mb-8 max-w-lg mx-auto">
           <div>
-            <h1 className="text-3xl font-heading font-extrabold mb-1 tracking-tight">Sales Hub</h1>
-            <p className="text-brand-200/70 text-xs font-bold uppercase tracking-widest">Performance Tracking</p>
+            <p className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">System v2.0 // Active</p>
+            <h1 className="text-4xl font-heading font-black text-slate-900 tracking-tight leading-none">Sales Hub</h1>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-white active:scale-90 transition-all hover:bg-white/20">
-              <Settings size={20} strokeWidth={2.5} />
+            <button onClick={() => setIsSettingsOpen(true)} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 active:scale-90 transition-all hover:bg-slate-100">
+              <Settings size={18} strokeWidth={2.5} />
             </button>
-            <button onClick={() => setIsAuthModalOpen(true)} className={`p-2.5 rounded-2xl active:scale-90 transition-all border ${currentUser ? 'bg-white text-brand-700 border-white' : 'bg-white/10 backdrop-blur-md border-white/10 text-white hover:bg-white/20'}`}>
-              <UserCircle size={22} strokeWidth={2.5} />
+            <button onClick={() => setIsAuthModalOpen(true)} className={`p-3 rounded-2xl active:scale-90 transition-all border ${currentUser ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+              <UserCircle size={20} strokeWidth={2.5} />
             </button>
           </div>
         </div>
 
-        <div className="relative z-10 bg-white/10 backdrop-blur-2xl border border-white/10 rounded-[2rem] p-4 flex items-center gap-4 shadow-inner max-w-lg mx-auto group hover:border-white/20 transition-colors">
-           <div className={`p-3 rounded-2xl transition-all duration-500 ${activeStore ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30' : 'bg-white/5 text-white/40'}`}>
-              <MapPinned size={20} strokeWidth={2.5} />
+        <div className="relative z-10 bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center gap-4 max-w-lg mx-auto group hover:border-slate-300 transition-colors">
+           <div className={`p-2.5 rounded-xl transition-all duration-500 ${activeStore ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-400'}`}>
+              <MapPinned size={18} strokeWidth={2.5} />
            </div>
            <div className="flex-1">
-              <p className="text-[10px] font-black uppercase tracking-widest text-brand-200/60 mb-1">Current Workspace</p>
+              <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-slate-400 mb-0.5">Workspace Node</p>
               <select 
                 value={activeStore}
                 onChange={(e) => handleStoreChange(e.target.value)}
-                className="w-full bg-transparent text-sm font-bold text-white outline-none appearance-none cursor-pointer pr-8"
+                className="w-full bg-transparent text-sm font-bold text-slate-900 outline-none appearance-none cursor-pointer pr-8"
               >
-                <option value="" className="text-gray-900">Select Branch...</option>
+                <option value="" className="text-slate-900">Select Branch...</option>
                 {MOCK_STORES.map(s => (
-                  <option key={s} value={s} className="text-gray-900 font-medium">{s}</option>
+                  <option key={s} value={s} className="text-slate-900 font-medium">{s}</option>
                 ))}
               </select>
            </div>
            {activeStore ? (
-             <button onClick={() => handleStoreChange('')} className="p-2 text-white/40 hover:text-white transition-colors bg-white/5 rounded-xl">
-               <X size={16} strokeWidth={3} />
+             <button onClick={() => handleStoreChange('')} className="p-2 text-slate-400 hover:text-slate-900 transition-colors bg-slate-200/50 rounded-lg">
+               <X size={14} strokeWidth={3} />
              </button>
            ) : (
-             <ChevronRight size={20} className="text-white/20 group-hover:translate-x-1 transition-transform" />
+             <ChevronRight size={18} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
            )}
         </div>
 
         {viewMode === 'history' && (
           <div className="mt-8 animate-in fade-in slide-in-from-top-4 duration-500 max-w-lg mx-auto">
-            <div className="relative mb-6">
+            <div className="relative mb-4">
               <input 
                 type="text" 
                 placeholder="Search history..." 
                 value={searchTerm} 
                 onChange={e => setSearchTerm(e.target.value)} 
-                className="w-full bg-white/10 border border-white/10 backdrop-blur-md rounded-2xl py-3.5 pl-12 pr-4 text-white placeholder-brand-200/50 focus:outline-none focus:bg-white/15 focus:ring-4 focus:ring-brand-500/10 transition-all" 
+                className="w-full bg-slate-100 border border-slate-200 rounded-xl py-3 pl-11 pr-4 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5 transition-all font-medium text-sm" 
               />
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-200/50" size={18} strokeWidth={2.5} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} strokeWidth={2.5} />
             </div>
             
-            <div className="flex p-1 bg-white/10 backdrop-blur-md rounded-2xl gap-1">
+            <div className="flex p-1 bg-slate-100 rounded-xl gap-1">
               {(['all', 'day', 'week', 'month'] as FilterRange[]).map(range => (
                 <button
                   key={range}
                   onClick={() => setFilterRange(range)}
-                  className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  className={`flex-1 py-2 rounded-lg text-[9px] font-mono font-bold uppercase tracking-widest transition-all ${
                     filterRange === range 
-                      ? 'bg-white text-slate-900 shadow-lg scale-[1.02]' 
-                      : 'text-brand-100/60 hover:text-white'
+                      ? 'bg-white text-slate-900 shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-600'
                   }`}
                 >
                   {range}
@@ -236,24 +244,23 @@ const Dashboard: React.FC = () => {
             {viewMode === 'home' && (
               <>
                 {last7Days.length > 0 && (
-                  <div className="bg-white p-6 rounded-[2.5rem] shadow-soft border border-slate-100 mb-8 animate-in slide-in-from-bottom-4">
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 mb-8 animate-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between mb-8">
-                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                        <TrendingUp size={14} className="text-brand-500" strokeWidth={3} /> Insights
+                      <h3 className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <TrendingUp size={12} className="text-slate-900" strokeWidth={3} /> Analytics // 7D
                       </h3>
-                      <span className="text-[10px] font-bold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-full">Last 7 Reports</span>
                     </div>
-                    <div className="h-32 flex items-end justify-between gap-3 px-1">
+                    <div className="h-24 flex items-end justify-between gap-2 px-1">
                       {last7Days.map((r, i) => {
-                        const height = Math.max((r.totals.net / maxVal) * 100, 15);
+                        const height = Math.max((r.totals.net / maxVal) * 100, 10);
                         const isLatest = i === last7Days.length - 1;
                         return (
-                          <div key={r.reportId} className="flex-1 flex flex-col items-center gap-3 h-full justify-end group">
+                          <div key={r.reportId} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                             <div 
-                              className={`w-full max-w-[12px] rounded-full transition-all duration-1000 group-hover:opacity-80 ${isLatest ? 'bg-brand-500 shadow-lg shadow-brand-500/40' : 'bg-slate-100'}`} 
+                              className={`w-full rounded-sm transition-all duration-700 ${isLatest ? 'bg-slate-900' : 'bg-slate-100 group-hover:bg-slate-200'}`} 
                               style={{ height: `${height}%` }}
                             ></div>
-                            <span className={`text-[8px] font-bold ${isLatest ? 'text-brand-600' : 'text-slate-400'}`}>{r.dateLocal.split('-')[2]}</span>
+                            <span className={`text-[8px] font-mono font-bold ${isLatest ? 'text-slate-900' : 'text-slate-400'}`}>{r.dateLocal.split('-')[2]}</span>
                           </div>
                         );
                       })}
@@ -268,24 +275,21 @@ const Dashboard: React.FC = () => {
                   {mostRecentReport ? (
                     <div 
                       onClick={() => navigate(`/report/${mostRecentReport.reportId}`)} 
-                      className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-elevated active:scale-[0.98] transition-all cursor-pointer relative overflow-hidden group hover:border-brand-100"
+                      className="bg-white p-6 rounded-3xl border border-slate-200 active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden group hover:border-slate-900 hover:shadow-soft"
                     >
-                      <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:scale-110 transition-transform">
-                        <FileText size={120} />
-                      </div>
                       <div className="relative z-10">
                         <div className="flex justify-between items-start mb-6">
-                          <span className="bg-slate-900 text-white text-[9px] font-black px-3 py-1.5 rounded-xl uppercase tracking-widest shadow-lg shadow-slate-900/10">{mostRecentReport.dateLocal}</span>
-                          <div className="p-3 bg-brand-50 rounded-2xl text-brand-600 group-hover:bg-brand-600 group-hover:text-white group-hover:rotate-12 transition-all shadow-sm">
+                          <span className="bg-slate-100 text-slate-600 text-[9px] font-mono font-bold px-2.5 py-1 rounded-md uppercase tracking-widest border border-slate-200">{mostRecentReport.dateLocal}</span>
+                          <div className="p-2 rounded-xl text-slate-300 group-hover:text-slate-900 transition-colors">
                             <ChevronRight size={18} strokeWidth={3} />
                           </div>
                         </div>
-                        <h3 className="text-2xl font-heading font-extrabold text-slate-900 mb-1 group-hover:text-brand-900 transition-colors">{mostRecentReport.storeName}</h3>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-pulse"></span>
+                        <h3 className="text-xl font-heading font-black text-slate-900 mb-1 tracking-tight">{mostRecentReport.storeName}</h3>
+                        <p className="text-[9px] text-slate-400 font-mono font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
+                          <span className="w-1 h-1 bg-slate-900 rounded-full"></span>
                           {mostRecentReport.items.length} Units Logged
                         </p>
-                        <div className="text-4xl font-black tracking-tight text-slate-900 font-heading">
+                        <div className="text-3xl font-mono font-bold tracking-tighter text-slate-900">
                           {formatCurrency(mostRecentReport.totals.net)}
                         </div>
                       </div>
@@ -325,21 +329,20 @@ const Dashboard: React.FC = () => {
                            </button>
                         </div>
                         
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {dayReports.map(report => (
                             <div 
                               key={report.reportId} 
                               onClick={() => navigate(`/report/${report.reportId}`)} 
-                              className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-soft flex justify-between items-center active:scale-[0.98] transition-all hover:border-brand-200 group"
+                              className="bg-white p-4 rounded-2xl border border-slate-200 flex justify-between items-center active:scale-[0.99] transition-all hover:border-slate-900 group"
                             >
                               <div className="flex-1 min-w-0 pr-4">
-                                <p className="text-[9px] text-slate-400 font-black uppercase mb-1 tracking-wider">{report.timeLocal}</p>
-                                <p className="text-sm font-bold text-slate-900 truncate group-hover:text-brand-600 transition-colors">{report.storeName}</p>
-                                <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{report.salesRepName || '—'}</p>
+                                <p className="text-[8px] text-slate-400 font-mono font-bold uppercase mb-0.5 tracking-wider">{report.timeLocal}</p>
+                                <p className="text-sm font-bold text-slate-900 truncate group-hover:text-slate-600 transition-colors">{report.storeName}</p>
                               </div>
                               <div className="text-right">
-                                <span className="block text-base font-black text-slate-900 group-hover:text-brand-600 transition-colors">{formatCurrency(report.totals.net)}</span>
-                                <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{report.items.length} SKU</span>
+                                <span className="block text-sm font-mono font-bold text-slate-900">{formatCurrency(report.totals.net)}</span>
+                                <span className="text-[8px] text-slate-400 font-mono font-bold uppercase tracking-widest">{report.items.length} SKU</span>
                               </div>
                             </div>
                           ))}
@@ -355,21 +358,21 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[calc(100%-3rem)] max-w-md z-[60]">
-        <div className="bg-slate-900/95 backdrop-blur-2xl border border-white/10 p-2.5 rounded-[2.5rem] shadow-elevated flex items-center justify-between pl-6 pr-3">
-          <div className="flex bg-white/5 p-1 rounded-2xl relative">
+        <div className="bg-white border border-slate-200 p-2 rounded-2xl shadow-elevated flex items-center justify-between pl-4 pr-2">
+          <div className="flex bg-slate-100 p-1 rounded-xl relative">
             <button 
               onClick={() => setViewMode('home')} 
-              className={`relative z-10 w-12 h-11 flex items-center justify-center transition-all ${viewMode === 'home' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+              className={`relative z-10 w-11 h-10 flex items-center justify-center transition-all ${viewMode === 'home' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              <LayoutDashboard size={20} strokeWidth={2.5} />
-              {viewMode === 'home' && <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-lg animate-in zoom-in-95 duration-200"></div>}
+              <LayoutDashboard size={18} strokeWidth={2.5} />
+              {viewMode === 'home' && <div className="absolute inset-0 bg-white rounded-lg -z-10 shadow-sm animate-in zoom-in-95 duration-200"></div>}
             </button>
             <button 
               onClick={() => setViewMode('history')} 
-              className={`relative z-10 w-12 h-11 flex items-center justify-center transition-all ${viewMode === 'history' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-300'}`}
+              className={`relative z-10 w-11 h-10 flex items-center justify-center transition-all ${viewMode === 'history' ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              <History size={20} strokeWidth={2.5} />
-              {viewMode === 'history' && <div className="absolute inset-0 bg-white rounded-xl -z-10 shadow-lg animate-in zoom-in-95 duration-200"></div>}
+              <History size={18} strokeWidth={2.5} />
+              {viewMode === 'history' && <div className="absolute inset-0 bg-white rounded-lg -z-10 shadow-sm animate-in zoom-in-95 duration-200"></div>}
             </button>
           </div>
           <button 
@@ -380,13 +383,13 @@ const Dashboard: React.FC = () => {
               }
               navigate('/new');
             }} 
-            className={`h-14 px-8 text-white rounded-[1.75rem] shadow-lg flex items-center justify-center gap-3 active:scale-95 transition-all group overflow-hidden relative ${activeStore ? 'bg-brand-600 hover:bg-brand-500 shadow-brand-600/25' : 'bg-slate-700 opacity-60 cursor-not-allowed'}`}
+            className={`h-12 px-6 text-white rounded-xl shadow-sm flex items-center justify-center gap-3 active:scale-95 transition-all group overflow-hidden relative ${activeStore ? 'bg-slate-900 hover:bg-black' : 'bg-slate-300 cursor-not-allowed'}`}
           >
-            <Plus size={20} strokeWidth={3} className="group-hover:rotate-90 transition-transform" />
-            <span className="font-black text-xs uppercase tracking-widest">New Report</span>
+            <Plus size={18} strokeWidth={3} className="group-hover:rotate-90 transition-transform" />
+            <span className="font-bold text-[10px] uppercase tracking-widest">New Report</span>
             {hasKey && (
               <div className="absolute top-0 right-0 p-1">
-                <Sparkles size={10} className="text-brand-300 animate-pulse" />
+                <Sparkles size={8} className="text-slate-400 animate-pulse" />
               </div>
             )}
           </button>

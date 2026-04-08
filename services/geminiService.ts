@@ -7,26 +7,29 @@ const ITEM_SCHEMA = {
   items: {
     type: Type.OBJECT,
     properties: {
-      productName: { type: Type.STRING, description: "Name of the product sold" },
-      sku: { type: Type.STRING, description: "Stock keeping unit or model number" },
-      quantity: { type: Type.NUMBER, description: "Number of units sold" },
-      unitPrice: { type: Type.NUMBER, description: "Price per single unit" },
-      currency: { type: Type.STRING, description: "ISO Currency code" },
-      notes: { type: Type.STRING, description: "Any additional details or corrections" },
-      lowConfidence: { type: Type.BOOLEAN, description: "True if the data was blurry or unclear" },
+      productName: { type: Type.STRING, description: "Full descriptive name of the product. Correct typos and expand abbreviations." },
+      sku: { type: Type.STRING, description: "Unique identifier, model number, or barcode if visible." },
+      quantity: { type: Type.NUMBER, description: "Number of units. Default to 1 if not explicitly stated." },
+      unitPrice: { type: Type.NUMBER, description: "Price per single unit. If only total is given, divide by quantity." },
+      currency: { type: Type.STRING, description: "3-letter ISO code (e.g., AED, USD, SAR). Use context to infer if missing." },
+      notes: { type: Type.STRING, description: "Additional details like color, size, or specific customer requests." },
+      lowConfidence: { type: Type.BOOLEAN, description: "Set to true if text is blurry, handwriting is messy, or data is missing." },
     },
     required: ["productName", "quantity", "unitPrice"],
   },
 };
 
 const SYSTEM_INSTRUCTION = `
-You are an expert sales data analyst. Extract structured sales records from unstructured input.
+You are a high-performance sales data extraction engine. Your goal is to convert unstructured input (text, images, audio) into clean, structured JSON sales records with 100% accuracy.
+
 Rules:
-1. Identify product names, quantities, and prices accurately.
-2. If the user mentions multiple items, extract all of them.
-3. If specific currencies are mentioned (AED, USD, SAR), preserve them.
-4. If an input is ambiguous, set lowConfidence to true for that item.
-5. For voice transcripts, ignore filler words and focus on the data.
+1. PRODUCT IDENTIFICATION: Extract the full product name. Clean up common OCR/Voice errors (e.g., "iPhon" -> "iPhone").
+2. QUANTITY: Always identify the quantity. Default to 1 if not specified.
+3. PRICING: Extract unit prices. If a total is given for multiple units, calculate the unit price (Total / Quantity).
+4. CURRENCY: Detect currency symbols or codes ($, AED, SAR, etc.). Default to the most common one in the context if missing.
+5. CONFIDENCE: Set lowConfidence to true ONLY if the data is genuinely illegible or highly ambiguous.
+6. NO HALLUCINATIONS: Do not invent items. Only extract what is present.
+7. MULTI-ITEM: If multiple items are listed, return an array containing all of them.
 `;
 
 /**
@@ -69,21 +72,38 @@ export const ensureApiKey = async (): Promise<boolean> => {
   return false;
 };
 
+let cachedClient: GoogleGenAI | null = null;
+let cachedKey: string | null = null;
+
 /**
- * Creates a fresh instance of the Gemini AI client.
+ * Creates or retrieves a cached instance of the Gemini AI client.
  */
 const getClient = async () => {
-  // Always use a new instance to ensure we pick up the latest injected API_KEY
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const currentKey = process.env.API_KEY || '';
+  
+  if (cachedClient && cachedKey === currentKey) {
+    return cachedClient;
+  }
+
+  cachedKey = currentKey;
+  cachedClient = new GoogleGenAI({ 
+    apiKey: currentKey,
+    // @ts-ignore
+    fetch: (url, options) => fetch(url, options)
+  });
+  
+  return cachedClient;
 };
 
-// Use gemini-3-pro-preview for complex text task (sales data extraction)
+// Use gemini-2.0-flash for high speed and excellent extraction accuracy
+const DEFAULT_MODEL = "gemini-2.0-flash";
+
 export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: `Extract sales data from this text: "${text}"`,
+      model: DEFAULT_MODEL,
+      contents: `Extract all sales items from this text. If it's a list, extract every row: "${text}"`,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
@@ -99,16 +119,15 @@ export const parseFromText = async (text: string): Promise<SalesItem[]> => {
   }
 };
 
-// Use gemini-3-pro-preview for complex multimodal task (extracting items from images)
 export const parseFromFile = async (base64Data: string, mimeType: string): Promise<SalesItem[]> => {
   const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: DEFAULT_MODEL,
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "List all sales items and their prices found in this image." }
+          { text: "Analyze this image/document and extract every sales item, quantity, and price. Look for tables or lists." }
         ]
       },
       config: {
@@ -123,16 +142,15 @@ export const parseFromFile = async (base64Data: string, mimeType: string): Promi
   }
 };
 
-// Use gemini-3-pro-preview for complex task (extracting items from audio dictation)
 export const parseFromAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<SalesItem[]> => {
   const ai = await getClient();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: DEFAULT_MODEL,
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Audio } },
-          { text: "Listen to this sales dictation and extract the items sold." }
+          { text: "Transcribe this sales dictation and extract all items mentioned with their quantities and prices." }
         ]
       },
       config: {

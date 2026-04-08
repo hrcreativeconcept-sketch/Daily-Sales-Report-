@@ -26,6 +26,18 @@ const getCurrentUserId = async (): Promise<string | null> => {
 };
 
 // --- Local Storage Helpers ---
+export const loadReportsLocalOnly = (): DailyReport[] => {
+  try {
+    const data = localStorage.getItem(LOCAL_STORAGE_KEYS.REPORTS);
+    const parsed = data ? JSON.parse(data) : [];
+    // Filter out locally marked deleted reports
+    return parsed.filter((r: DailyReport) => !r.isDeleted)
+                 .sort((a: DailyReport, b: DailyReport) => b.createdAt - a.createdAt);
+  } catch (e) {
+    return [];
+  }
+};
+
 const loadLocalReports = (): DailyReport[] => {
   try {
     const data = localStorage.getItem(LOCAL_STORAGE_KEYS.REPORTS);

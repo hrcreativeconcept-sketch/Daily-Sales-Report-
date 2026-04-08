@@ -184,94 +184,91 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
     <button
       onClick={() => setActiveTab(id)}
       disabled={isProcessing || !!pendingItems}
-      className={`relative flex-1 py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all rounded-2xl z-10 ${
+      className={`relative flex-1 py-4 text-[9px] font-mono font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all z-10 ${
         activeTab === id ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
       } ${isProcessing || pendingItems ? 'opacity-30' : ''}`}
     >
-      <Icon size={16} strokeWidth={2.5} />
+      <Icon size={14} strokeWidth={2.5} />
       <span className="hidden sm:inline">{label}</span>
       {activeTab === id && (
-        <div className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-100 -z-10 animate-in fade-in zoom-in-95 duration-300"></div>
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-slate-900 rounded-full animate-in fade-in slide-in-from-bottom-1 duration-300"></div>
       )}
     </button>
   );
 
   return (
-    <div className="bg-white rounded-[2.5rem] shadow-soft border border-slate-100 overflow-hidden mb-8 relative">
+    <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden mb-8 relative">
       {pendingItems && (
         <div className="absolute inset-0 bg-white z-[30] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="bg-brand-50/50 px-6 py-4 border-b border-brand-100 flex justify-between items-center">
-            <h3 className="font-black text-brand-900 text-[10px] uppercase tracking-widest flex items-center gap-2">
-              <Sparkles className="text-brand-500" size={14} /> Intelligence Review
+          <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+            <h3 className="font-mono font-bold text-slate-900 text-[10px] uppercase tracking-[0.2em] flex items-center gap-2">
+              <Sparkles className="text-slate-400" size={14} /> Data Extraction // Review
             </h3>
             {pendingSource === 'speech' && (
-              <button onClick={() => speakItems(pendingItems)} className="p-2 text-brand-600 hover:bg-brand-100 rounded-xl transition-colors">
+              <button onClick={() => speakItems(pendingItems)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
                 <Volume2 size={16} strokeWidth={2.5} />
               </button>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {pendingItems.map((item, i) => (
-              <div key={i} className={`flex justify-between items-center p-4 rounded-2xl border ${item.lowConfidence ? 'bg-amber-50 border-amber-200 shadow-sm' : 'bg-slate-50 border-slate-100'}`}>
+              <div key={i} className={`flex justify-between items-center p-4 rounded-xl border ${item.lowConfidence ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
                 <div className="flex-1 min-w-0 pr-4">
                    <div className="flex items-center gap-2 mb-0.5">
-                     <span className="font-extrabold text-slate-900 text-sm">{item.quantity}×</span> 
-                     <span className={`text-sm font-bold truncate ${item.lowConfidence ? 'text-amber-900' : 'text-slate-800'}`}>{item.productName}</span>
+                     <span className="font-mono font-bold text-slate-900 text-xs">{item.quantity}×</span> 
+                     <span className={`text-xs font-bold truncate ${item.lowConfidence ? 'text-amber-900' : 'text-slate-800'}`}>{item.productName}</span>
                    </div>
-                   <p className="text-[10px] text-slate-400 font-medium truncate italic">{item.notes || 'No extra notes'}</p>
+                   <p className="text-[9px] font-mono text-slate-400 truncate italic">{item.notes || 'No extra notes'}</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-sm font-black text-brand-600">{formatCurrency(item.unitPrice, item.currency)}</span>
+                   <span className="text-xs font-mono font-bold text-slate-900">{formatCurrency(item.unitPrice, item.currency)}</span>
                 </div>
               </div>
             ))}
           </div>
-          <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+          <div className="p-4 bg-slate-50 border-t border-slate-200 flex gap-3">
             <button 
               onClick={discardPendingItems}
-              className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white border border-slate-200 rounded-2xl hover:text-slate-600 transition-all active:scale-95"
+              className="flex-1 py-3 text-[9px] font-mono font-bold uppercase tracking-widest text-slate-400 bg-white border border-slate-200 rounded-xl hover:text-slate-600 transition-all active:scale-95"
             >
               Discard
             </button>
             <button 
               onClick={confirmPendingItems}
-              className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-white bg-slate-900 rounded-2xl shadow-elevated hover:bg-black transition-all flex items-center justify-center gap-2 active:scale-95"
+              className="flex-1 py-3 text-[9px] font-mono font-bold uppercase tracking-widest text-white bg-slate-900 rounded-xl hover:bg-black transition-all flex items-center justify-center gap-2 active:scale-95"
             >
-              <Check size={16} strokeWidth={3} /> Save Selection
+              <Check size={14} strokeWidth={3} /> Commit Data
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-slate-100/50 p-1.5 flex gap-1 border-b border-slate-100">
-        <TabButton id="snap" icon={Camera} label="Camera" />
-        <TabButton id="copy" icon={Clipboard} label="Text" />
-        <TabButton id="speech" icon={Mic} label="Voice" />
-        <TabButton id="upload" icon={Upload} label="Upload" />
+      <div className="bg-slate-50 p-1 flex border-b border-slate-200">
+        <TabButton id="snap" icon={Camera} label="Optics" />
+        <TabButton id="copy" icon={Clipboard} label="Buffer" />
+        <TabButton id="speech" icon={Mic} label="Audio" />
+        <TabButton id="upload" icon={Upload} label="Import" />
       </div>
 
-      <div className="p-6 min-h-[220px] flex items-center justify-center relative">
+      <div className="p-6 min-h-[200px] flex items-center justify-center relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]">
         {isProcessing ? (
           <div className="flex flex-col items-center justify-center py-10 w-full animate-in fade-in duration-500">
             <div className="relative mb-6">
-              <div className="absolute inset-0 bg-brand-500/10 rounded-full animate-ping opacity-25"></div>
-              <div className="relative bg-white p-6 rounded-[2rem] shadow-elevated border border-slate-50">
-                 <Loader2 className="animate-spin text-brand-600" size={32} strokeWidth={2.5} />
-              </div>
+               <Loader2 className="animate-spin text-slate-900" size={32} strokeWidth={2.5} />
             </div>
-            <span className="text-[10px] font-black text-slate-900 uppercase tracking-[0.3em] animate-pulse">Processing Agent</span>
-            <span className="text-[9px] text-slate-400 mt-2 font-bold uppercase tracking-widest">Applying AI Logic...</span>
+            <span className="text-[9px] font-mono font-bold text-slate-900 uppercase tracking-[0.3em] animate-pulse">Processing Node</span>
+            <span className="text-[8px] font-mono text-slate-400 mt-2 uppercase tracking-widest">Running AI Extraction...</span>
           </div>
         ) : (
           <div className="w-full h-full animate-in slide-in-from-bottom-2 duration-500">
             {activeTab === 'snap' && (
-              <label className="flex flex-col items-center justify-center w-full h-44 border-2 border-slate-100 border-dashed rounded-[2rem] cursor-pointer bg-slate-50/50 hover:bg-slate-50 transition-all group active:scale-[0.99] border-brand-200/50">
+              <label className="flex flex-col items-center justify-center w-full h-40 border border-slate-200 border-dashed rounded-2xl cursor-pointer bg-white/80 backdrop-blur-sm hover:bg-white transition-all group active:scale-[0.99]">
                   <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <div className="p-4 bg-white rounded-2xl shadow-soft mb-4 group-hover:scale-110 group-hover:shadow-elevated transition-all border border-slate-50">
-                        <Camera className="w-8 h-8 text-brand-500" strokeWidth={2} />
+                      <div className="p-3 bg-slate-50 rounded-xl mb-3 group-hover:scale-110 transition-all border border-slate-100">
+                        <Camera className="w-6 h-6 text-slate-900" strokeWidth={2} />
                       </div>
-                      <p className="text-[10px] text-slate-900 font-black uppercase tracking-widest">Snap Receipt</p>
-                      <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase tracking-widest">Automatic Data Extraction</p>
+                      <p className="text-[9px] font-mono font-bold text-slate-900 uppercase tracking-widest">Initialize Scan</p>
+                      <p className="text-[8px] font-mono text-slate-400 mt-1 uppercase tracking-widest">Optical Character Recognition</p>
                   </div>
                   <input type="file" accept="image/*" capture="environment" className="hidden" onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0], 'ocr')} />
               </label>
@@ -281,25 +278,25 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
               <div className="space-y-4">
                 <div className="relative group">
                   <textarea
-                    className="w-full p-5 border border-slate-100 rounded-[2rem] text-sm focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 focus:bg-white outline-none shadow-soft min-h-[160px] resize-none bg-slate-50/50 font-medium transition-all"
-                    placeholder="Paste messy notes here..."
+                    className="w-full p-5 border border-slate-200 rounded-2xl text-xs focus:ring-2 focus:ring-slate-900/5 focus:border-slate-900 focus:bg-white outline-none min-h-[140px] resize-none bg-white/80 backdrop-blur-sm font-mono transition-all"
+                    placeholder="Paste raw data buffer here..."
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                   />
                   {inputText && (
                     <div className="absolute bottom-4 right-4 animate-in fade-in zoom-in duration-300">
-                       <button onClick={handleTextSubmit} className="bg-slate-900 text-white p-3 rounded-2xl shadow-elevated hover:bg-black transition-all active:scale-90">
-                         <ArrowRight size={20} strokeWidth={3} />
+                       <button onClick={handleTextSubmit} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-black transition-all active:scale-90">
+                         <ArrowRight size={18} strokeWidth={3} />
                        </button>
                     </div>
                   )}
                 </div>
                 <div className="flex justify-between px-2">
                   <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Live Auto-Parser</span>
+                    <div className="w-1 h-1 bg-slate-900 rounded-full animate-pulse"></div>
+                    <span className="text-[8px] font-mono font-bold text-slate-400 uppercase tracking-widest">Buffer Stream Active</span>
                   </div>
-                  <span className="text-[9px] text-slate-300 font-bold uppercase">{inputText.length} / 5000</span>
+                  <span className="text-[8px] font-mono text-slate-300 font-bold uppercase">{inputText.length} / 5000</span>
                 </div>
               </div>
             )}
@@ -308,26 +305,26 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
               <div className="flex flex-col items-center justify-center h-full py-4">
                 <button
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={`relative w-28 h-28 rounded-[2.5rem] flex items-center justify-center shadow-elevated transition-all duration-500 ${
-                    isRecording ? 'bg-red-500 scale-105 ring-[12px] ring-red-50' : 'bg-slate-900 hover:shadow-slate-900/30 ring-[12px] ring-slate-100'
+                  className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-500 border-4 ${
+                    isRecording ? 'bg-red-500 border-red-100 scale-105' : 'bg-slate-900 border-slate-100 hover:bg-black'
                   }`}
                 >
-                  {isRecording ? <StopCircle size={44} className="text-white" strokeWidth={2.5} /> : <Mic size={44} className="text-white" strokeWidth={2.5} />}
-                  {isRecording && <span className="absolute w-full h-full rounded-[2.5rem] animate-ping bg-red-500 opacity-20"></span>}
+                  {isRecording ? <StopCircle size={32} className="text-white" strokeWidth={2.5} /> : <Mic size={32} className="text-white" strokeWidth={2.5} />}
+                  {isRecording && <span className="absolute w-full h-full rounded-full animate-ping bg-red-500 opacity-20"></span>}
                 </button>
-                <p className="mt-8 text-[11px] font-black text-slate-900 uppercase tracking-[0.2em]">{isRecording ? "Listening..." : "Tap to Speak"}</p>
-                <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase tracking-widest text-center max-w-[180px]">Describe your sales naturally</p>
+                <p className="mt-8 text-[10px] font-mono font-bold text-slate-900 uppercase tracking-[0.2em]">{isRecording ? "Capturing Audio..." : "Initialize Audio"}</p>
+                <p className="text-[8px] font-mono text-slate-400 mt-2 uppercase tracking-widest text-center max-w-[180px]">Voice-to-Data Synthesis</p>
               </div>
             )}
 
             {activeTab === 'upload' && (
-              <label className="flex flex-col items-center justify-center w-full h-44 border-2 border-slate-100 border-dashed rounded-[2rem] cursor-pointer bg-white hover:bg-slate-50 transition-all group active:scale-[0.99]">
+              <label className="flex flex-col items-center justify-center w-full h-40 border border-slate-200 border-dashed rounded-2xl cursor-pointer bg-white/80 backdrop-blur-sm hover:bg-white transition-all group active:scale-[0.99]">
                   <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <div className="p-4 bg-slate-50 rounded-2xl mb-4 group-hover:bg-white group-hover:shadow-elevated transition-all border border-transparent group-hover:border-slate-50">
-                        <Upload className="w-8 h-8 text-slate-300 group-hover:text-brand-500 transition-colors" strokeWidth={2.5} />
+                      <div className="p-3 bg-slate-50 rounded-xl mb-3 group-hover:bg-slate-100 transition-all border border-slate-100">
+                        <Upload className="w-6 h-6 text-slate-400 group-hover:text-slate-900 transition-colors" strokeWidth={2.5} />
                       </div>
-                      <p className="text-[10px] text-slate-900 font-black uppercase tracking-widest">Select Files</p>
-                      <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase tracking-widest">PDF, CSV, or Image</p>
+                      <p className="text-[9px] font-mono font-bold text-slate-900 uppercase tracking-widest">Ingest File</p>
+                      <p className="text-[8px] font-mono text-slate-400 mt-1 uppercase tracking-widest">PDF, CSV, or Image</p>
                   </div>
                   <input type="file" accept="image/*, application/pdf, .csv, text/csv" className="hidden" onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0], 'upload')} />
               </label>
