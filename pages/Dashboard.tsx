@@ -10,6 +10,7 @@ import { formatCurrency } from '../utils/calculations';
 import { MOCK_STORES, LOCAL_STORAGE_KEYS } from '../constants';
 import AuthModal from '../components/AuthModal';
 import SettingsModal from '../components/SettingsModal';
+import ConfirmModal from '../components/ConfirmModal';
 
 type ViewMode = 'home' | 'history';
 type FilterRange = 'all' | 'day' | 'week' | 'month';
@@ -27,6 +28,9 @@ const Dashboard: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeStore, setActiveStore] = useState<string>(localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_STORE) || '');
+  
+  const [confirmDelete, setConfirmDelete] = useState<{ date: string, ids: string[] } | null>(null);
+  const [showStoreAlert, setShowStoreAlert] = useState(false);
 
   const initData = async (checkKey = true) => {
     // 1. Load local data immediately for speed
@@ -81,12 +85,15 @@ const Dashboard: React.FC = () => {
   const handleDeleteDay = async (date: string) => {
     const reportsToDelete = reports.filter(r => r.dateLocal === date);
     const ids = reportsToDelete.map(r => r.reportId);
-    
-    if (window.confirm(`Hide all ${ids.length} reports for ${date}? You can recover them from archives later.`)) {
-      await StorageService.deleteReports(ids);
-      // Remove from active view state
-      setReports(prev => prev.filter(r => !ids.includes(r.reportId)));
-    }
+    setConfirmDelete({ date, ids });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDelete) return;
+    const { ids } = confirmDelete;
+    await StorageService.deleteReports(ids);
+    setReports(prev => prev.filter(r => !ids.includes(r.reportId)));
+    setConfirmDelete(null);
   };
 
   const filteredReports = useMemo(() => {
@@ -131,6 +138,25 @@ const Dashboard: React.FC = () => {
     <div className="min-h-screen bg-slate-50/50 pb-32 font-sans overflow-x-hidden pt-safe">
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} user={currentUser} onAuthSuccess={() => initData(false)} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onConfigChange={() => {}} user={currentUser} />
+      
+      <ConfirmModal 
+        isOpen={!!confirmDelete} 
+        onClose={() => setConfirmDelete(null)} 
+        onConfirm={executeDelete}
+        title="Archive Records"
+        message={`Are you sure you want to hide all ${confirmDelete?.ids.length || 0} reports for ${confirmDelete?.date}? You can recover them from archives later.`}
+        confirmLabel="Archive"
+        variant="danger"
+      />
+
+      <ConfirmModal 
+        isOpen={showStoreAlert} 
+        onClose={() => setShowStoreAlert(false)} 
+        onConfirm={() => setShowStoreAlert(false)}
+        title="Workspace Required"
+        message="Please select a workspace node in the header before initializing a new report."
+        confirmLabel="Understood"
+      />
 
       {!hasKey && (
         <div 
@@ -378,7 +404,7 @@ const Dashboard: React.FC = () => {
           <button 
             onClick={() => {
               if (!activeStore) {
-                alert("Please select a workspace in the header first.");
+                setShowStoreAlert(true);
                 return;
               }
               navigate('/new');

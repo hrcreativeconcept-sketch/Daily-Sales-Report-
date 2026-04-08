@@ -22,6 +22,7 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [pendingItems, setPendingItems] = useState<SalesItem[] | null>(null);
   const [pendingSource, setPendingSource] = useState<'ocr' | 'speech' | 'manual' | 'upload'>('manual');
+  const [captureError, setCaptureError] = useState<string | null>(null);
 
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -74,9 +75,10 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
 
   const handleCapturedResults = (items: SalesItem[], source: 'ocr' | 'speech' | 'manual' | 'upload') => {
     if (items.length === 0) {
-      alert("No identifiable items found.");
+      setCaptureError("No identifiable items found in the input buffer.");
       return;
     }
+    setCaptureError(null);
     setPendingSource(source);
     setPendingItems(items);
   };
@@ -102,7 +104,7 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
       const items = await GeminiService.parseFromText(inputText);
       handleCapturedResults(items, 'manual');
     } catch (e: any) {
-      alert(`Parsing failed: ${e.message}`);
+      setCaptureError(`Parsing failed: ${e.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -168,6 +170,8 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
              const base64 = (reader.result as string).split(',')[1];
              const items = await GeminiService.parseFromAudio(base64, mimeType);
              handleCapturedResults(items, 'speech');
+           } catch (e: any) {
+             setCaptureError(`Audio synthesis failed: ${e.message}`);
            } finally { setIsProcessing(false); }
         };
         reader.readAsDataURL(audioBlob);
@@ -175,7 +179,10 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
       };
       recorder.start();
       setIsRecording(true);
-    } catch (err) { alert("Mic access required."); }
+      setCaptureError(null);
+    } catch (err) { 
+      setCaptureError("Microphone access is required for audio capture."); 
+    }
   };
 
   const stopRecording = () => { if (mediaRecorder && isRecording) { mediaRecorder.stop(); setIsRecording(false); } };
@@ -251,6 +258,18 @@ const CapturePanel: React.FC<CapturePanelProps> = ({ onItemsCaptured, isProcessi
       </div>
 
       <div className="p-6 min-h-[200px] flex items-center justify-center relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]">
+        {captureError && (
+          <div className="absolute top-4 left-4 right-4 z-20 animate-in slide-in-from-top-2 duration-300">
+            <div className="bg-red-50 border border-red-200 p-3 rounded-xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertTriangle size={14} />
+                <span className="text-[9px] font-mono font-bold uppercase tracking-tight">{captureError}</span>
+              </div>
+              <button onClick={() => setCaptureError(null)} className="text-red-400 hover:text-red-600"><X size={14}/></button>
+            </div>
+          </div>
+        )}
+        
         {isProcessing ? (
           <div className="flex flex-col items-center justify-center py-10 w-full animate-in fade-in duration-500">
             <div className="relative mb-6">

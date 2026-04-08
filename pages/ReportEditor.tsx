@@ -11,6 +11,7 @@ import useUndoRedo from '../hooks/useUndoRedo';
 import CapturePanel from '../components/CapturePanel';
 import ItemsTable from '../components/ItemsTable';
 import TotalsPanel from '../components/TotalsPanel';
+import ConfirmModal from '../components/ConfirmModal';
 
 const ReportEditor: React.FC = () => {
   const { id } = useParams();
@@ -25,6 +26,8 @@ const ReportEditor: React.FC = () => {
   
   const [isDirty, setIsDirty] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  const [showNotFoundAlert, setShowNotFoundAlert] = useState(false);
   
   const [errors, setErrors] = useState<Record<number, { [key in keyof SalesItem]?: string } & { items?: string }>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -59,8 +62,7 @@ const ReportEditor: React.FC = () => {
         if (existing) {
           initReport(existing);
         } else {
-          alert("Report not found");
-          navigate('/');
+          setShowNotFoundAlert(true);
         }
         setLoading(false);
       }
@@ -121,6 +123,14 @@ const ReportEditor: React.FC = () => {
     return isValid;
   };
 
+  const handleBack = () => {
+    if (isDirty) {
+      setShowUnsavedModal(true);
+    } else {
+      navigate('/');
+    }
+  };
+
   const handleSave = async (showErrorAlert = true): Promise<DailyReport | null> => {
     if (!report) return null;
     if (!validate()) return null;
@@ -134,7 +144,7 @@ const ReportEditor: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 2000);
       return report;
     } catch (e: any) {
-      if (showErrorAlert) alert(e.message || "Failed to save report.");
+      if (showErrorAlert) setGlobalError(e.message || "Failed to save report.");
       return null;
     } finally {
       setSaving(false);
@@ -178,9 +188,29 @@ const ReportEditor: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white pb-32 font-sans">
+      <ConfirmModal 
+        isOpen={showUnsavedModal} 
+        onClose={() => setShowUnsavedModal(false)} 
+        onConfirm={() => navigate('/')}
+        title="Unsaved Changes"
+        message="You have unsaved modifications in this report. Are you sure you want to exit? All unsaved data will be lost."
+        confirmLabel="Exit Anyway"
+        cancelLabel="Stay"
+        variant="danger"
+      />
+
+      <ConfirmModal 
+        isOpen={showNotFoundAlert} 
+        onClose={() => navigate('/')} 
+        onConfirm={() => navigate('/')}
+        title="Record Not Found"
+        message="The requested sales report could not be located in the system database. It may have been archived or deleted."
+        confirmLabel="Return to Dashboard"
+      />
+
       <div className="sticky top-0 bg-white/90 backdrop-blur-xl border-b border-slate-200 z-50 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/')} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition-all active:scale-90"><ArrowLeft size={20} strokeWidth={2.5} /></button>
+          <button onClick={handleBack} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition-all active:scale-90"><ArrowLeft size={20} strokeWidth={2.5} /></button>
           <div className="h-4 w-px bg-slate-200 mx-1"></div>
           <div className="flex items-center gap-1">
             <button onClick={undo} disabled={!canUndo} className="p-2 text-slate-400 disabled:opacity-30 hover:text-slate-900 rounded-xl transition-all active:scale-90" title="Undo"><Undo2 size={18} /></button>

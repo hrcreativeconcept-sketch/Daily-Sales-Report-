@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Bell, User, Save, Clock, CheckCircle, Smartphone, Mail } from 'lucide-react';
+import { X, Bell, User, Save, Clock, CheckCircle, Smartphone, Mail, AlertTriangle } from 'lucide-react';
 import * as StorageService from '../services/storageService';
 import { AppConfig } from '../types';
 
@@ -15,6 +15,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onConfig
   const [config, setConfig] = useState<AppConfig>({ salesRepName: '', phoneNumber: '', enableReminders: false, reminderTime: '22:00' });
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>('default');
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -37,13 +38,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onConfig
           if (result === 'granted') {
             setConfig(prev => ({ ...prev, enableReminders: true }));
           } else {
-            alert("Permission denied. Please enable notifications in your browser settings.");
+            setError("Permission denied. Please enable notifications in your browser settings.");
           }
         } else {
            setConfig(prev => ({ ...prev, enableReminders: true }));
         }
       } else {
-        alert("Notifications are not supported in this browser.");
+        setError("Notifications are not supported in this browser.");
       }
     } else {
       // Turning OFF
@@ -81,6 +82,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onConfig
 
         <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar">
           
+          {error && (
+            <div className="bg-red-50 border border-red-100 p-3 rounded-xl flex items-center justify-between gap-3 animate-in slide-in-from-top-2">
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertTriangle size={14} />
+                <span className="text-[10px] font-bold uppercase tracking-tight leading-tight">{error}</span>
+              </div>
+              <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {/* Personal Details */}
           <div className="space-y-4">
              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
